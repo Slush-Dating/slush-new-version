@@ -9,14 +9,7 @@ interface EventDetailProps {
     onBook: () => void;
 }
 
-// Mock participants data - in production this would come from the API
-const MOCK_PARTICIPANTS = [
-    { id: '1', name: 'Alex', profilePicture: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&q=80' },
-    { id: '2', name: 'Sarah', profilePicture: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&q=80' },
-    { id: '3', name: 'Emma', profilePicture: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&q=80' },
-    { id: '4', name: 'James', profilePicture: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80' },
-    { id: '5', name: 'Mia', profilePicture: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80' },
-];
+// Participants will be fetched from the API when event booking is implemented
 
 export const EventDetail: React.FC<EventDetailProps> = ({ eventId, onBack, onBook }) => {
     const [event, setEvent] = useState<EventData | null>(null);
@@ -140,14 +133,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({ eventId, onBack, onBoo
                 <section className="event-detail-section">
                     <h2 className="section-heading">Event participants</h2>
                     <div className="participants-scroll">
-                        {MOCK_PARTICIPANTS.map((participant) => (
-                            <div key={participant.id} className="participant-avatar">
-                                <img 
-                                    src={participant.profilePicture} 
-                                    alt={participant.name}
-                                />
-                            </div>
-                        ))}
+                        <p className="section-description" style={{ marginTop: '8px' }}>
+                            Participants will be shown here once the event is booked.
+                        </p>
                     </div>
                 </section>
             </div>

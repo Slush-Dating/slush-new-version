@@ -11,6 +11,54 @@ Currently, two official plugins are available:
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
+## Setup & Testing
+
+### Seed Test Users & Testing
+
+Before testing the app, you need to create test users with profiles and videos. Run this command to seed the database:
+
+```bash
+# Make sure your server is running first (cd server && npm start)
+curl -X POST http://localhost:5001/api/seed/users
+```
+
+Or use a tool like Postman/Insomnia to POST to `http://localhost:5001/api/seed/users`
+
+This will create 8 test users with:
+- Profiles (names, bios, photos, interests)
+- TikTok-style videos for the video feed
+- Proper gender and preference settings
+- All users have password: `password123`
+- Emails: `test1@slush.com` through `test8@slush.com`
+
+#### Testing Steps
+
+1. **Start the servers:**
+   ```bash
+   # Terminal 1: Backend
+   cd server && npm start
+
+   # Terminal 2: Frontend
+   npm run dev
+   ```
+
+2. **Seed test users:**
+   ```bash
+   curl -X POST http://localhost:5001/api/seed/users
+   ```
+
+3. **Access the app** at `http://localhost:5175/`
+
+4. **Log in** with any test account:
+   - Email: `test1@slush.com` (or test2@slush.com, etc.)
+   - Password: `password123`
+
+5. **Complete onboarding** if prompted
+
+6. **Browse the video feed** - you should now see real user profiles with videos!
+
+The video feed will show profiles based on your gender preferences. If you log in as test1 (Sophia, woman interested in men), you'll see male profiles with videos.
+
 ## Development Workflow
 
 ### Web Development (Vite Dev Server)
@@ -119,3 +167,19 @@ export default defineConfig([
   },
 ])
 ```
+
+Test users:
+test1@slush.com (Sophia) - Woman interested in men
+test2@slush.com (Alex) - Man interested in women
+test3@slush.com (Chloe) - Woman interested in men
+test4@slush.com (Jordan) - Non-binary interested in everyone
+
+password123
+
+
+REMOVAL OF MATCH DATA:
+cd server
+node clear-matches.js
+
+Kill all servers:
+pkill -f node

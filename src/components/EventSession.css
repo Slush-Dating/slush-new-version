@@ -518,6 +518,16 @@
     letter-spacing: 0.3px;
 }
 
+.feedback-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.feedback-btn.disabled:hover {
+    transform: none;
+}
+
 /* Summary Screen */
 .summary-screen {
     flex: 1;

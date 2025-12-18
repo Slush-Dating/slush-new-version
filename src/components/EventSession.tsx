@@ -1,48 +1,72 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, X, Video, VideoOff, Mic, MicOff, Sparkles, PhoneOff, Trophy, Users, Clock } from 'lucide-react';
+import { Heart, X, Video, VideoOff, Mic, MicOff, Sparkles, PhoneOff, Trophy, Users, Clock, Loader2 } from 'lucide-react';
+import { matchService, discoveryService, type DiscoveryProfile } from '../services/api';
 import './EventSession.css';
 
 type Phase = 'prep' | 'date' | 'feedback' | 'summary' | 'ended';
 
 interface Profile {
     id: string;
+    userId: string;
     name: string;
-    age: number;
+    age: number | null;
     bio: string;
-    imageUrl: string;
-    videoUrl: string;
+    imageUrl: string | null;
+    videoUrl: string | null;
 }
 
-const DUMMY_PARTNERS: Profile[] = [
-    {
-        id: 'p1',
-        name: 'Emily',
-        age: 24,
-        bio: 'Traveler & Foodie. Always down for a new adventure!',
-        imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&q=80',
-        videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-girl-in-neon-light-dancing-alone-31508-large.mp4'
-    },
-    {
-        id: 'p2',
-        name: 'Jessica',
-        age: 26,
-        bio: 'Art lover and weekend hiker. Let\'s explore!',
-        imageUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&q=80',
-        videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-woman-running-on-top-of-a-mountain-at-sunset-34635-large.mp4'
-    }
-];
+interface EventSessionProps {
+    onComplete: () => void;
+    eventId?: string | null;
+    onMatch?: (matchData: any) => void;
+}
 
-export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
+export const EventSession: React.FC<EventSessionProps> = ({ onComplete, eventId, onMatch }) => {
     const [round, setRound] = useState(1);
     const [phase, setPhase] = useState<Phase>('prep');
     const [timeLeft, setTimeLeft] = useState(60); // Start with 60s prep
-    const [partner, setPartner] = useState<Profile>(DUMMY_PARTNERS[0]);
+    const [partners, setPartners] = useState<Profile[]>([]);
+    const [partnerIndex, setPartnerIndex] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const partner = partners[partnerIndex];
 
     const [isCamOn, setIsCamOn] = useState(true);
     const [isMicOn, setIsMicOn] = useState(true);
     const [showPrepCam, setShowPrepCam] = useState(false);
+    const [processingAction, setProcessingAction] = useState(false);
     const myVideoRef = useRef<HTMLVideoElement>(null);
+
+    // Fetch event partners on mount
+    useEffect(() => {
+        const fetchPartners = async () => {
+            try {
+                setLoading(true);
+                const feed = await discoveryService.getEventPartners(eventId || undefined, 10);
+                
+                // Convert DiscoveryProfile to Profile format
+                const formattedPartners: Profile[] = feed.map(p => ({
+                    id: p.id,
+                    userId: p.userId,
+                    name: p.name,
+                    age: p.age || 0,
+                    bio: p.bio,
+                    imageUrl: p.thumbnail,
+                    videoUrl: p.videoUrl
+                }));
+                
+                setPartners(formattedPartners);
+            } catch (err: any) {
+                console.error('Failed to fetch event partners:', err);
+                // Fallback to empty array
+                setPartners([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchPartners();
+    }, [eventId]);
 
     // Timer & Phase Logic
     useEffect(() => {
@@ -61,6 +85,36 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
         return () => clearInterval(timer);
     }, [phase, round]);
 
+    const handleMatchAction = async (action: 'like' | 'pass') => {
+        if (processingAction || !partner.userId) {
+            // If no userId, just proceed (dummy data)
+            handlePhaseTransition();
+            return;
+        }
+
+        setProcessingAction(true);
+        try {
+            const result = await matchService.performAction(
+                partner.userId,
+                action,
+                'live_event',
+                eventId || null
+            );
+
+            if (result.isMatch && result.match && onMatch) {
+                onMatch(result.match);
+            }
+
+            handlePhaseTransition();
+        } catch (error) {
+            console.error('Failed to perform match action:', error);
+            // Still proceed even if API call fails
+            handlePhaseTransition();
+        } finally {
+            setProcessingAction(false);
+        }
+    };
+
     const handlePhaseTransition = () => {
         if (phase === 'prep') {
             setPhase('date');
@@ -69,9 +123,10 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
             setPhase('feedback');
             setTimeLeft(60); // 1 minute
         } else if (phase === 'feedback') {
-            if (round < 2) { // Just demo 2 rounds
+            // Move to next partner if available
+            if (partnerIndex < partners.length - 1) {
                 setRound(prev => prev + 1);
-                setPartner(DUMMY_PARTNERS[1]);
+                setPartnerIndex(prev => prev + 1);
                 setPhase('prep');
                 setTimeLeft(60);
             } else {
@@ -99,6 +154,32 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                 .catch(err => console.error(err));
         }
     }, [isCamOn, phase]);
+
+    if (loading) {
+        return (
+            <div className="session-container">
+                <div className="video-loading" style={{ position: 'absolute', inset: 0, zIndex: 100 }}>
+                    <Loader2 className="spinner" size={48} />
+                    <p>Loading event partners...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!partner && partners.length === 0) {
+        return (
+            <div className="session-container">
+                <div className="video-error" style={{ position: 'absolute', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <p>No partners available for this event.</p>
+                    <button className="vibrant-btn" onClick={onComplete}>Back to Events</button>
+                </div>
+            </div>
+        );
+    }
+
+    if (!partner) {
+        return null;
+    }
 
     if (phase === 'ended') {
         return (
@@ -169,7 +250,13 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                         <div className="prep-main-content">
                             <div className="partner-focus-card glass">
                                 <div className="partner-avatar-ring">
-                                    <img src={partner.imageUrl} alt={partner.name} />
+                                    {partner.imageUrl ? (
+                                        <img src={partner.imageUrl} alt={partner.name} />
+                                    ) : (
+                                        <div className="avatar-placeholder" style={{ width: '100%', height: '100%', borderRadius: '50%' }}>
+                                            {partner.name[0].toUpperCase()}
+                                        </div>
+                                    )}
                                     <div className="pulse-ring"></div>
                                 </div>
                                 <div className="prep-text-content">
@@ -222,7 +309,13 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                     >
                         {/* Main Partner Video */}
                         <div className="partner-video-container">
-                            <video src={partner.videoUrl} autoPlay loop playsInline />
+                            {partner.videoUrl ? (
+                                <video src={partner.videoUrl} autoPlay loop playsInline />
+                            ) : (
+                                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff' }}>
+                                    <p>No video available</p>
+                                </div>
+                            )}
                         </div>
 
                         {/* My PIP Video */}
@@ -267,7 +360,13 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                             >
                                 <div className="feedback-avatar-glow"></div>
                                 <div className="feedback-avatar">
-                                    <img src={partner.imageUrl} alt={partner.name} />
+                                    {partner.imageUrl ? (
+                                        <img src={partner.imageUrl} alt={partner.name} />
+                                    ) : (
+                                        <div className="avatar-placeholder" style={{ width: '100%', height: '100%', borderRadius: '50%' }}>
+                                            {partner.name[0].toUpperCase()}
+                                        </div>
+                                    )}
                                 </div>
                             </motion.div>
                             
@@ -287,13 +386,21 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: 0.4 }}
                             >
-                                <button className="feedback-btn feedback-btn-pass" onClick={handlePhaseTransition}>
+                                <button 
+                                    className={`feedback-btn feedback-btn-pass ${processingAction ? 'disabled' : ''}`} 
+                                    onClick={() => handleMatchAction('pass')}
+                                    disabled={processingAction}
+                                >
                                     <div className="feedback-btn-icon">
                                         <X size={28} />
                                     </div>
                                     <span>Pass</span>
                                 </button>
-                                <button className="feedback-btn feedback-btn-like" onClick={handlePhaseTransition}>
+                                <button 
+                                    className={`feedback-btn feedback-btn-like ${processingAction ? 'disabled' : ''}`} 
+                                    onClick={() => handleMatchAction('like')}
+                                    disabled={processingAction}
+                                >
                                     <div className="feedback-btn-icon">
                                         <Heart size={28} fill="currentColor" />
                                     </div>
@@ -333,8 +440,8 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                                 <div className="summary-stat-card">
                                     <Users size={24} className="stat-icon" />
                                     <div className="stat-info">
-                                        <span className="stat-number">2</span>
-                                        <span className="stat-label">People Met</span>
+                                        <span className="stat-number">{partners.length}</span>
+                                        <span className="stat-label">Rounds</span>
                                     </div>
                                 </div>
 
@@ -349,46 +456,50 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                                 <div className="summary-stat-card">
                                     <Heart size={24} className="stat-icon vibrant-text" />
                                     <div className="stat-info">
-                                        <span className="stat-number">1</span>
-                                        <span className="stat-label">Matches</span>
+                                        <span className="stat-number">{partners.length}</span>
+                                        <span className="stat-label">People Met</span>
                                     </div>
                                 </div>
                             </motion.div>
 
-                            <motion.div
-                                className="summary-partners"
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.6 }}
-                            >
-                                <h3>People You Met</h3>
-                                <div className="partners-grid">
-                                    {DUMMY_PARTNERS.map((partner, index) => (
-                                        <motion.div
-                                            key={partner.id}
-                                            className="partner-summary-card"
-                                            initial={{ opacity: 0, scale: 0.8 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            transition={{ delay: 0.7 + (index * 0.1) }}
-                                        >
-                                            <div className="partner-summary-avatar">
-                                                <img src={partner.imageUrl} alt={partner.name} />
-                                            </div>
-                                            <div className="partner-summary-info">
-                                                <h4>{partner.name}</h4>
-                                                <p>{partner.age} years old</p>
-                                            </div>
-                                            <div className="partner-summary-status">
-                                                {index === 0 ? (
+                            {partners.length > 0 && (
+                                <motion.div
+                                    className="summary-partners"
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.6 }}
+                                >
+                                    <h3>People You Met</h3>
+                                    <div className="partners-grid">
+                                        {partners.map((p, index) => (
+                                            <motion.div
+                                                key={p.id}
+                                                className="partner-summary-card"
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                transition={{ delay: 0.7 + (index * 0.1) }}
+                                            >
+                                                <div className="partner-summary-avatar">
+                                                    {p.imageUrl ? (
+                                                        <img src={p.imageUrl} alt={p.name} />
+                                                    ) : (
+                                                        <div className="avatar-placeholder">
+                                                            {p.name[0].toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="partner-summary-info">
+                                                    <h4>{p.name}</h4>
+                                                    {p.age !== null && <p>{p.age} years old</p>}
+                                                </div>
+                                                <div className="partner-summary-status">
                                                     <Heart size={16} fill="currentColor" className="vibrant-text" />
-                                                ) : (
-                                                    <X size={16} className="text-dim" />
-                                                )}
-                                            </div>
-                                        </motion.div>
-                                    ))}
-                                </div>
-                            </motion.div>
+                                                </div>
+                                            </motion.div>
+                                        ))}
+                                    </div>
+                                </motion.div>
+                            )}
 
                             <motion.button
                                 className="vibrant-btn summary-continue-btn"

@@ -10,10 +10,20 @@ interface User {
     id?: string;
 }
 
-export const Events: React.FC<{ onJoin: (eventId: string) => void; user?: User }> = ({ onJoin, user }) => {
+interface EventsProps {
+    onJoin: (eventId: string) => void;
+    user?: User;
+    bookedEventId?: string | null;
+    onJoinWaitingRoom: (eventId: string) => void;
+}
+
+export const Events: React.FC<EventsProps> = ({ onJoin, user, bookedEventId, onJoinWaitingRoom }) => {
     const [events, setEvents] = useState<EventData[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [bookedEvent, setBookedEvent] = useState<EventData | null>(null);
+    const [timeUntilEvent, setTimeUntilEvent] = useState<number>(0);
+    const [canJoin, setCanJoin] = useState(false);
 
     useEffect(() => {
         const fetchEvents = async () => {
@@ -32,6 +42,45 @@ export const Events: React.FC<{ onJoin: (eventId: string) => void; user?: User }
         fetchEvents();
     }, []);
 
+    // Fetch booked event details
+    useEffect(() => {
+        if (bookedEventId) {
+            const fetchBookedEvent = async () => {
+                try {
+                    const data = await eventService.getEventById(bookedEventId);
+                    setBookedEvent(data);
+                } catch (err) {
+                    console.error('Failed to fetch booked event:', err);
+                }
+            };
+            fetchBookedEvent();
+        } else {
+            setBookedEvent(null);
+        }
+    }, [bookedEventId]);
+
+    // Countdown timer for booked events
+    useEffect(() => {
+        if (!bookedEvent) return;
+
+        const updateCountdown = () => {
+            const eventDate = new Date(bookedEvent.date);
+            const now = new Date();
+            const diffMs = eventDate.getTime() - now.getTime();
+            const diffSeconds = Math.max(0, Math.floor(diffMs / 1000));
+            
+            setTimeUntilEvent(diffSeconds);
+            
+            // Can join 15 minutes (900 seconds) before event starts
+            setCanJoin(diffSeconds <= 900 && diffSeconds > 0);
+        };
+
+        updateCountdown();
+        const interval = setInterval(updateCountdown, 1000);
+
+        return () => clearInterval(interval);
+    }, [bookedEvent]);
+
     const categories = [
         { id: 'music', label: 'Music', icon: Music },
         { id: 'sports', label: 'Sports', icon: Dumbbell },
@@ -47,6 +96,25 @@ export const Events: React.FC<{ onJoin: (eventId: string) => void; user?: User }
     const formatTime = (dateString: string) => {
         const date = new Date(dateString);
         return date.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true });
+    };
+
+    const formatCountdown = (seconds: number) => {
+        if (seconds <= 0) return 'Event starting now';
+        
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+
+        if (days > 0) {
+            return `${days}d ${hours}h ${minutes}m`;
+        } else if (hours > 0) {
+            return `${hours}h ${minutes}m ${secs}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${secs}s`;
+        } else {
+            return `${secs}s`;
+        }
     };
 
     if (loading) {
@@ -69,6 +137,34 @@ export const Events: React.FC<{ onJoin: (eventId: string) => void; user?: User }
 
     return (
         <div className="events-container">
+            {/* Countdown Banner for Booked Events */}
+            {bookedEvent && (
+                <div className="events-countdown-banner glass">
+                    <div className="countdown-content">
+                        <div className="countdown-info">
+                            <span className="countdown-label">Next event starts in</span>
+                            <span className="countdown-time">{formatCountdown(timeUntilEvent)}</span>
+                        </div>
+                        <div className="countdown-actions">
+                            <button 
+                                className={`countdown-join-btn vibrant-btn ${canJoin ? '' : 'disabled'}`}
+                                onClick={() => bookedEventId && onJoinWaitingRoom(bookedEventId)}
+                                disabled={!canJoin}
+                            >
+                                Join
+                            </button>
+                            <button 
+                                className="countdown-test-btn"
+                                onClick={() => bookedEventId && onJoinWaitingRoom(bookedEventId)}
+                                title="Skip to waiting room (testing only)"
+                            >
+                                Test
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* User Profile Header */}
             <div className="events-profile-header">
                 <div className="profile-info">
@@ -84,8 +180,7 @@ export const Events: React.FC<{ onJoin: (eventId: string) => void; user?: User }
                     <div className="profile-details">
                         <h2 className="profile-name">{user?.name || 'Guest User'}</h2>
                         <p className="profile-location">
-                            {user?.location || 'London, UK'}
-                            {user?.id && `, ${user.id}`}
+                            {user?.locationString || 'Sheffield, UK'}
                         </p>
                     </div>
                 </div>

@@ -4,6 +4,7 @@
     background: #000;
     position: relative;
     overflow: hidden;
+    touch-action: pan-y;
 }
 
 .video-card-tiktok {
@@ -11,12 +12,92 @@
     inset: 0;
     width: 100%;
     height: 100%;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: grab;
+    user-select: none;
+}
+
+.video-card-tiktok.dragging {
+    cursor: grabbing;
+    transition: none;
 }
 
 .tiktok-video-element {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    background: #000;
+}
+
+.video-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10;
+    color: white;
+    pointer-events: none;
+}
+
+.video-loading .spinner {
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+    opacity: 0.8;
+}
+
+.video-loading p {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.video-error {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 15;
+    color: white;
+    gap: 16px;
+}
+
+.video-error p {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.video-error button {
+    padding: 12px 24px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.video-error button:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.video-error button:active {
+    transform: scale(0.95);
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Side Actions - Stacked on the right */
@@ -41,6 +122,11 @@
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    cursor: pointer;
+}
+
+.action-icon-wrapper:active .icon-circle {
+    transform: scale(0.85);
 }
 
 .icon-circle {
@@ -54,11 +140,12 @@
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     cursor: pointer;
-    transition: transform 0.2s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    will-change: transform;
 }
 
-.icon-circle:active {
-    transform: scale(0.9);
+.icon-circle:hover {
+    transform: scale(1.05);
 }
 
 .like-circle {
@@ -82,6 +169,17 @@
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+.action-icon-wrapper.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.action-icon-wrapper.disabled .icon-circle {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Bottom Profile Info - Positioned on the left */

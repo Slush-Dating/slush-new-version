@@ -1,4 +1,11 @@
-const API_URL = 'http://localhost:5001/api/auth';
+const getApiBaseUrl = () => {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:5001/api/auth';
+    }
+    return `http://${window.location.hostname}:5001/api/auth`;
+};
+
+const API_URL = getApiBaseUrl();
 
 export const authService = {
     async register(email: string, password: string) {
@@ -54,7 +61,7 @@ export const authService = {
             },
             body: formData,
         });
-        
+
         if (!response.ok) {
             let errorMessage = 'Upload failed';
             try {
@@ -66,7 +73,7 @@ export const authService = {
             }
             throw new Error(errorMessage);
         }
-        
+
         return response.json();
     },
 
@@ -80,6 +87,34 @@ export const authService = {
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.message || 'Failed to fetch profile');
+        }
+        return response.json();
+    },
+
+    async getUserProfile(token: string, userId: string) {
+        const response = await fetch(`${API_URL}/profile/${userId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to fetch user profile');
+        }
+        return response.json();
+    },
+
+    async upgradeMock(token: string) {
+        const response = await fetch(`${API_URL}/upgrade-mock`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Upgrade failed');
         }
         return response.json();
     }

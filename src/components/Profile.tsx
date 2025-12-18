@@ -437,10 +437,10 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                                         <div className="location-row">
                                             <div className="location-text">
                                                 <h4 className="section-label">Location</h4>
-                                                <p className="location-val">Chicago, IL United States</p>
+                                                <p className="location-val">{user.locationString || 'Sheffield, UK'}</p>
                                             </div>
                                             <div className="distance-pill">
-                                                <MapPin size={14} /> 1 km
+                                                <MapPin size={14} /> Nearby
                                             </div>
                                         </div>
                                     </section>

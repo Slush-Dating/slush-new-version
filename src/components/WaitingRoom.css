@@ -206,7 +206,7 @@
     font-size: 48px;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
-    background: linear-gradient(135deg, var(--slush-blue), var(--slush-red));
+    background: var(--slush-blue);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-top: 4px;

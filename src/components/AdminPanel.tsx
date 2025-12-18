@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { LayoutDashboard, Calendar, Users, Upload, BarChart3, Clock, MapPin, Plus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { LayoutDashboard, Calendar, Users, Upload, BarChart3, Clock, MapPin, Plus, Trash2 } from 'lucide-react';
+import { eventService, type EventData } from '../services/api';
 import './AdminPanel.css';
 
 export const AdminPanel: React.FC = () => {
@@ -106,69 +107,178 @@ const AdminDashboard = () => (
 );
 
 const EventUpload = () => {
-    const [events] = useState([
-        { id: 1, name: 'Sleek Speed Dating', date: '2025-12-25', location: 'Manhattan, NY' },
-        { id: 2, name: 'Sunset Rooftop Meet', date: '2025-12-30', location: 'Brooklyn, NY' },
-    ]);
+    const [events, setEvents] = useState<EventData[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [formData, setFormData] = useState<Omit<EventData, '_id' | 'status'>>({
+        name: '',
+        date: '',
+        location: '',
+        imageUrl: '/default-event.png',
+    });
+
+    useEffect(() => {
+        fetchEvents();
+    }, []);
+
+    const fetchEvents = async () => {
+        setLoading(true);
+        try {
+            const data = await eventService.getAllEvents();
+            setEvents(data);
+            setError(null);
+        } catch (err) {
+            setError('Failed to load events');
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleUpload = async () => {
+        if (!formData.name || !formData.date || !formData.location) {
+            alert('Please fill in all required fields');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await eventService.createEvent(formData as EventData);
+            setFormData({ name: '', date: '', location: '', imageUrl: '/default-event.png' });
+            await fetchEvents();
+            setError(null);
+        } catch (err) {
+            setError('Failed to create event');
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this event?')) return;
+
+        try {
+            await eventService.deleteEvent(id);
+            await fetchEvents();
+        } catch (err) {
+            alert('Failed to delete event');
+            console.error(err);
+        }
+    };
 
     return (
         <div className="event-mgmt">
             <div className="event-form glass">
                 <h3>Create New Event</h3>
+                {error && <div className="error-message">{error}</div>}
                 <div className="form-grid">
                     <div className="input-group">
                         <label>Event Name</label>
-                        <input type="text" placeholder="e.g. London Coffee Social" className="glass" />
+                        <input
+                            name="name"
+                            type="text"
+                            placeholder="e.g. London Coffee Social"
+                            className="glass"
+                            value={formData.name}
+                            onChange={handleInputChange}
+                        />
                     </div>
                     <div className="input-group">
                         <label>Date & Time</label>
-                        <input type="datetime-local" className="glass" />
+                        <input
+                            name="date"
+                            type="datetime-local"
+                            className="glass"
+                            value={formData.date}
+                            onChange={handleInputChange}
+                        />
                     </div>
                     <div className="input-group">
                         <label>Location</label>
                         <div className="input-with-icon">
                             <MapPin size={16} />
-                            <input type="text" placeholder="Enter venue..." className="glass" />
+                            <input
+                                name="location"
+                                type="text"
+                                placeholder="Enter venue..."
+                                className="glass"
+                                value={formData.location}
+                                onChange={handleInputChange}
+                            />
                         </div>
                     </div>
                     <div className="input-group">
-                        <label>Highlight Video URL</label>
+                        <label>Event Image URL</label>
                         <div className="input-with-icon">
                             <Upload size={16} />
-                            <input type="text" placeholder="https://..." className="glass" />
+                            <input
+                                name="imageUrl"
+                                type="text"
+                                placeholder="https://..."
+                                className="glass"
+                                value={formData.imageUrl}
+                                onChange={handleInputChange}
+                            />
                         </div>
                     </div>
                 </div>
-                <button className="vibrant-btn">
+                <button
+                    className="vibrant-btn"
+                    onClick={handleUpload}
+                    disabled={loading}
+                >
                     <Plus size={18} />
-                    <span>Upload Event</span>
+                    <span>{loading ? 'Uploading...' : 'Upload Event'}</span>
                 </button>
             </div>
 
             <div className="event-list glass">
                 <h3>Existing Events</h3>
-                <table className="admin-table">
-                    <thead>
-                        <tr>
-                            <th>Event Name</th>
-                            <th>Date</th>
-                            <th>Location</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {events.map(event => (
-                            <tr key={event.id}>
-                                <td>{event.name}</td>
-                                <td>{event.date}</td>
-                                <td>{event.location}</td>
-                                <td><span className="badge active">Scheduled</span></td>
-                                <td><button className="text-btn">Edit</button></td>
+                {loading && <p>Loading events...</p>}
+                {!loading && events.length === 0 && <p>No events found.</p>}
+                {!loading && events.length > 0 && (
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Image</th>
+                                <th>Event Name</th>
+                                <th>Date</th>
+                                <th>Location</th>
+                                <th>Status</th>
+                                <th>Actions</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {events.map(event => (
+                                <tr key={event._id}>
+                                    <td>
+                                        <div className="table-thumbnail glass">
+                                            <img src={event.imageUrl || '/default-event.png'} alt={event.name} />
+                                        </div>
+                                    </td>
+                                    <td>{event.name}</td>
+                                    <td>
+                                        <div>{new Date(event.date).toLocaleDateString()}</div>
+                                        <div className="table-time">{new Date(event.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                    </td>
+                                    <td>{event.location}</td>
+                                    <td><span className={`badge ${event.status?.toLowerCase() || 'scheduled'}`}>{event.status || 'Scheduled'}</span></td>
+                                    <td>
+                                        <button className="text-btn icon-btn" onClick={() => handleDelete(event._id!)}>
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
             </div>
         </div>
     );

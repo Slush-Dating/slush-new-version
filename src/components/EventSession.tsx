@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, X, Video, VideoOff, Mic, MicOff, Sparkles, PhoneOff } from 'lucide-react';
+import { Heart, X, Video, VideoOff, Mic, MicOff, Sparkles, PhoneOff, Trophy, Users, Clock } from 'lucide-react';
 import './EventSession.css';
 
-type Phase = 'prep' | 'date' | 'feedback' | 'ended';
+type Phase = 'prep' | 'date' | 'feedback' | 'summary' | 'ended';
 
 interface Profile {
     id: string;
@@ -49,7 +49,10 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
         const timer = setInterval(() => {
             setTimeLeft(prev => {
                 if (prev <= 1) {
-                    handlePhaseTransition();
+                    // Don't auto-transition for summary phase - let users review and click continue
+                    if (phase !== 'summary') {
+                        handlePhaseTransition();
+                    }
                     return 0;
                 }
                 return prev - 1;
@@ -72,8 +75,11 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                 setPhase('prep');
                 setTimeLeft(60);
             } else {
-                setPhase('ended');
+                setPhase('summary');
+                setTimeLeft(0); // No timer for summary
             }
+        } else if (phase === 'summary') {
+            setPhase('ended');
         }
     };
 
@@ -96,12 +102,44 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
 
     if (phase === 'ended') {
         return (
-            <div className="event-ended glass">
-                <Sparkles size={48} className="vibrant-text" />
-                <h2>Event Complete!</h2>
-                <p>You met some amazing people. Check your matches soon!</p>
-                <button className="vibrant-btn" onClick={onComplete}>Back to Discovery</button>
-            </div>
+            <motion.div
+                className="event-ended"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8 }}
+            >
+                <div className="event-ended-background"></div>
+                <div className="event-ended-content glass">
+                    <motion.div
+                        className="event-ended-icon"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", delay: 0.2 }}
+                    >
+                        <Trophy size={64} className="vibrant-text" />
+                    </motion.div>
+
+                    <motion.div
+                        className="event-ended-text"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.4 }}
+                    >
+                        <h2>Event Complete!</h2>
+                        <p>You met some amazing people. Check your matches soon!</p>
+                    </motion.div>
+
+                    <motion.button
+                        className="vibrant-btn event-ended-btn"
+                        onClick={onComplete}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.6 }}
+                    >
+                        Back to Discovery
+                    </motion.button>
+                </div>
+            </motion.div>
         );
     }
 
@@ -114,6 +152,7 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                     {phase === 'prep' && 'Preparation'}
                     {phase === 'date' && 'Live Date'}
                     {phase === 'feedback' && 'Final Choice'}
+                    {phase === 'summary' && 'Event Summary'}
                 </div>
                 <div className="phase-timer">{formatTime(timeLeft)}</div>
             </header>
@@ -184,10 +223,6 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                         {/* Main Partner Video */}
                         <div className="partner-video-container">
                             <video src={partner.videoUrl} autoPlay loop playsInline />
-                            <div className="partner-info-box glass">
-                                <h3>{partner.name}, {partner.age}</h3>
-                                <p>{partner.bio}</p>
-                            </div>
                         </div>
 
                         {/* My PIP Video */}
@@ -222,23 +257,148 @@ export const EventSession: React.FC<{ onComplete: () => void }> = ({ onComplete 
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 1.1 }}
                     >
+                        <div className="feedback-background"></div>
                         <div className="feedback-content glass">
-                            <div className="feedback-avatar">
-                                <img src={partner.imageUrl} alt={partner.name} />
-                            </div>
-                            <h2>Did you vibe with {partner.name}?</h2>
-                            <p>Be honest, we'll only match you if it's mutual!</p>
+                            <motion.div 
+                                className="feedback-avatar-wrapper"
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: "spring", delay: 0.2 }}
+                            >
+                                <div className="feedback-avatar-glow"></div>
+                                <div className="feedback-avatar">
+                                    <img src={partner.imageUrl} alt={partner.name} />
+                                </div>
+                            </motion.div>
+                            
+                            <motion.div 
+                                className="feedback-text-content"
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.3 }}
+                            >
+                                <h2 className="feedback-title">Did you vibe with {partner.name}?</h2>
+                                <p className="feedback-subtitle">Be honest, we'll only match you if it's mutual!</p>
+                            </motion.div>
 
-                            <div className="feedback-actions">
-                                <button className="feedback-btn pass" onClick={handlePhaseTransition}>
-                                    <X size={32} />
+                            <motion.div 
+                                className="feedback-actions"
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.4 }}
+                            >
+                                <button className="feedback-btn feedback-btn-pass" onClick={handlePhaseTransition}>
+                                    <div className="feedback-btn-icon">
+                                        <X size={28} />
+                                    </div>
                                     <span>Pass</span>
                                 </button>
-                                <button className="feedback-btn like" onClick={handlePhaseTransition}>
-                                    <Heart size={32} fill="currentColor" />
+                                <button className="feedback-btn feedback-btn-like" onClick={handlePhaseTransition}>
+                                    <div className="feedback-btn-icon">
+                                        <Heart size={28} fill="currentColor" />
+                                    </div>
                                     <span>Like</span>
                                 </button>
-                            </div>
+                            </motion.div>
+                        </div>
+                    </motion.div>
+                )}
+
+                {phase === 'summary' && (
+                    <motion.div
+                        key="summary"
+                        className="summary-screen"
+                        initial={{ opacity: 0, y: 100 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 1.1 }}
+                    >
+                        <div className="summary-background"></div>
+                        <div className="summary-content glass">
+                            <motion.div
+                                className="summary-header"
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.2 }}
+                            >
+                                <Sparkles size={32} className="vibrant-text" />
+                                <h2>Event Summary</h2>
+                            </motion.div>
+
+                            <motion.div
+                                className="summary-stats"
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.4 }}
+                            >
+                                <div className="summary-stat-card">
+                                    <Users size={24} className="stat-icon" />
+                                    <div className="stat-info">
+                                        <span className="stat-number">2</span>
+                                        <span className="stat-label">People Met</span>
+                                    </div>
+                                </div>
+
+                                <div className="summary-stat-card">
+                                    <Clock size={24} className="stat-icon" />
+                                    <div className="stat-info">
+                                        <span className="stat-number">6:00</span>
+                                        <span className="stat-label">Total Time</span>
+                                    </div>
+                                </div>
+
+                                <div className="summary-stat-card">
+                                    <Heart size={24} className="stat-icon vibrant-text" />
+                                    <div className="stat-info">
+                                        <span className="stat-number">1</span>
+                                        <span className="stat-label">Matches</span>
+                                    </div>
+                                </div>
+                            </motion.div>
+
+                            <motion.div
+                                className="summary-partners"
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.6 }}
+                            >
+                                <h3>People You Met</h3>
+                                <div className="partners-grid">
+                                    {DUMMY_PARTNERS.map((partner, index) => (
+                                        <motion.div
+                                            key={partner.id}
+                                            className="partner-summary-card"
+                                            initial={{ opacity: 0, scale: 0.8 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ delay: 0.7 + (index * 0.1) }}
+                                        >
+                                            <div className="partner-summary-avatar">
+                                                <img src={partner.imageUrl} alt={partner.name} />
+                                            </div>
+                                            <div className="partner-summary-info">
+                                                <h4>{partner.name}</h4>
+                                                <p>{partner.age} years old</p>
+                                            </div>
+                                            <div className="partner-summary-status">
+                                                {index === 0 ? (
+                                                    <Heart size={16} fill="currentColor" className="vibrant-text" />
+                                                ) : (
+                                                    <X size={16} className="text-dim" />
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </motion.div>
+
+                            <motion.button
+                                className="vibrant-btn summary-continue-btn"
+                                onClick={handlePhaseTransition}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.8 }}
+                            >
+                                Continue
+                            </motion.button>
                         </div>
                     </motion.div>
                 )}

@@ -3,11 +3,11 @@
 :root {
   --font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
 
-  /* Brand: Slush - Primary Blue to Red Gradient */
-  --slush-blue: #007AFF;
-  --slush-red: #FF2D55;
+  /* Brand: Slush - Primary Blue */
+  --slush-blue: #3B82F6;
+  --slush-blue-dark: #2563EB;
   --primary: var(--slush-blue);
-  --primary-accent: var(--slush-red);
+  --primary-accent: var(--slush-blue-dark);
 
   --bg-offwhite: #F8F9FB;
   --bg-white: #FFFFFF;
@@ -72,19 +72,16 @@ button:active {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, var(--slush-blue), var(--slush-red));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--slush-blue);
 }
 
 .vibrant-btn {
-  background: linear-gradient(135deg, var(--slush-blue), var(--slush-red));
+  background: var(--slush-blue);
   color: white;
   padding: 12px 24px;
   border-radius: var(--radius-full);
   font-weight: 600;
-  box-shadow: 0 4px 15px rgba(0, 122, 255, 0.2);
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
 }
 
 .vibrant-btn:hover {

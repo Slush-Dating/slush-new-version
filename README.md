@@ -11,6 +11,54 @@ Currently, two official plugins are available:
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
+## Development Workflow
+
+### Web Development (Vite Dev Server)
+
+Start the development server for web development with hot reloading:
+
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:5177/`
+
+### Mobile Development (Capacitor)
+
+This project is configured with Capacitor to deploy to iOS and Android app stores.
+
+#### Prerequisites
+- **iOS**: Xcode (macOS only)
+- **Android**: Android Studio + Java 11+ (currently requires Java 11+)
+
+#### Mobile Development Steps
+
+1. **Build for production:**
+   ```bash
+   npm run build
+   ```
+
+2. **Sync web assets to native projects:**
+   ```bash
+   npm run cap:sync
+   ```
+
+3. **Open in native IDEs:**
+   ```bash
+   npm run cap:ios     # Opens Xcode for iOS development
+   npm run cap:android # Opens Android Studio for Android development
+   ```
+
+#### Quick Commands
+- `npm run cap:ios` - Build + sync + open iOS project (one command)
+- `npm run cap:android` - Build + sync + open Android project (one command)
+
+#### Development Flow
+1. Develop on `localhost:5177` using `npm run dev`
+2. When ready to test on mobile: `npm run build && npm run cap:sync`
+3. Open native IDE and run on simulator/device
+4. Iterate: make changes → build → sync → test
+
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:

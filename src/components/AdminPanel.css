@@ -26,8 +26,9 @@
 .admin-logo h2 {
     font-size: 26px;
     font-weight: 900;
-    background: linear-gradient(135deg, var(--slush-blue), var(--slush-red));
+    background: var(--slush-blue);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     letter-spacing: -1px;
 }
@@ -59,7 +60,7 @@
 }
 
 .admin-nav-item.active {
-    background: linear-gradient(135deg, var(--slush-blue), var(--slush-red));
+    background: var(--slush-blue);
     color: white;
     box-shadow: 0 8px 24px rgba(0, 122, 255, 0.2);
     border: none;
@@ -117,7 +118,7 @@
     width: 38px;
     height: 38px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--slush-blue), var(--slush-red));
+    background: var(--slush-blue);
     color: white;
     display: flex;
     align-items: center;
@@ -233,6 +234,17 @@
     margin-bottom: 30px;
 }
 
+.error-message {
+    background: #fff5f5;
+    color: var(--slush-red);
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid #fee2e2;
+    margin-bottom: 24px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
 .input-group label {
     font-size: 13px;
     font-weight: 700;
@@ -281,13 +293,31 @@
     font-weight: 500;
 }
 
-.badge.active {
-    background: #ecfdf5;
-    color: #10b981;
+.badge {
     font-size: 12px;
     font-weight: 700;
     padding: 6px 12px;
     border-radius: var(--radius-full);
+}
+
+.badge.scheduled {
+    background: #f0f7ff;
+    color: var(--slush-blue);
+}
+
+.badge.active {
+    background: #ecfdf5;
+    color: #10b981;
+}
+
+.badge.completed {
+    background: #f3f4f6;
+    color: var(--text-dim);
+}
+
+.badge.cancelled {
+    background: #fff1f2;
+    color: #e11d48;
 }
 
 .text-btn {
@@ -300,4 +330,37 @@
 
 .text-btn:hover {
     background: #f0f7ff;
+}
+
+.icon-btn {
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.icon-btn:hover {
+    background: #fff5f5;
+    color: var(--slush-red);
+}
+
+.table-time {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 600;
+}
+
+.table-thumbnail {
+    width: 60px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: #f0f2f5;
+}
+
+.table-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }

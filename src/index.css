@@ -1,0 +1,103 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Brand: Slush - Primary Blue to Red Gradient */
+  --slush-blue: #007AFF;
+  --slush-red: #FF2D55;
+  --primary: var(--slush-blue);
+  --primary-accent: var(--slush-red);
+
+  --bg-offwhite: #F8F9FB;
+  --bg-white: #FFFFFF;
+  --text-main: #1C1C1E;
+  --text-dim: #8E8E93;
+
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(0, 0, 0, 0.05);
+  --glass-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.08);
+
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-full: 9999px;
+
+  --transition-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-offwhite);
+  color: var(--text-main);
+  overflow: hidden;
+  /* Prevent scrolling for the swipe feed */
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  color: inherit;
+  transition: all 0.2s var(--transition-smooth);
+}
+
+button:active {
+  transform: scale(0.95);
+}
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--slush-blue), var(--slush-red));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.vibrant-btn {
+  background: linear-gradient(135deg, var(--slush-blue), var(--slush-red));
+  color: white;
+  padding: 12px 24px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(0, 122, 255, 0.2);
+}
+
+.vibrant-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-2px);
+}
+
+.icon-btn {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-main);
+}

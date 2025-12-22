@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { LayoutDashboard, Calendar, Users, Upload, BarChart3, Clock, MapPin, Plus, Trash2, Eye, Settings, LogOut, Lock } from 'lucide-react';
-import { eventService, type EventData } from '../services/api';
+import type { EventData } from '../services/api';
 import { getApiBaseUrl, getMediaBaseUrl, getAbsoluteMediaUrl } from '../services/apiConfig';
 import { AdminLogin } from './AdminLogin';
 import './AdminPanel.css';

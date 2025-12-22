@@ -355,6 +355,42 @@ router.post('/upload', (req, res) => {
     });
 });
 
+// Admin Login
+router.post('/admin/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
+
+        // Check if user is an admin
+        if (!user.isAdmin) {
+            return res.status(403).json({ message: 'Access denied. Admin privileges required.' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
+
+        // Create admin token with admin flag
+        const token = jwt.sign({ userId: user._id, isAdmin: true }, JWT_SECRET, { expiresIn: '24h' });
+        res.json({ 
+            token, 
+            user: { 
+                id: user._id, 
+                email: user.email, 
+                name: user.name,
+                isAdmin: true 
+            } 
+        });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+});
+
 // Mock Upgrade to Premium
 router.post('/upgrade-mock', async (req, res) => {
     try {

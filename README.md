@@ -59,6 +59,47 @@ This will create 8 test users with:
 
 The video feed will show profiles based on your gender preferences. If you log in as test1 (Sophia, woman interested in men), you'll see male profiles with videos.
 
+## Admin Panel Setup
+
+The admin panel has a separate login system and requires admin credentials.
+
+### Creating an Admin User
+
+To create an admin user, run the following script:
+
+```bash
+cd server
+node create-admin.js [email] [password]
+```
+
+**Examples:**
+```bash
+# Use default credentials (admin@slush.com / admin123)
+node create-admin.js
+
+# Use custom credentials
+node create-admin.js admin@example.com mySecurePassword
+```
+
+This will:
+- Create a new admin user (or update an existing user to admin)
+- Set the `isAdmin` flag to `true`
+- Hash the password securely
+
+### Accessing the Admin Panel
+
+1. Navigate to `/admin` in your browser (e.g., `http://localhost:5177/admin`)
+2. You'll see the admin login page
+3. Enter your admin email and password
+4. Once authenticated, you'll have access to:
+   - Dashboard overview
+   - Event management
+   - User management
+   - Reports management
+   - System tools
+
+**Note**: Admin authentication is separate from regular user authentication. Admin tokens are stored separately (`adminToken` vs `token`) and have a shorter expiration time (24 hours vs 7 days).
+
 ## Development Workflow
 
 ### Web Development (Vite Dev Server)

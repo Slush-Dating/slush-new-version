@@ -2,21 +2,55 @@ import { useState, useEffect } from 'react';
 import { LayoutDashboard, Calendar, Users, Upload, BarChart3, Clock, MapPin, Plus, Trash2, Eye, Settings, LogOut, Lock } from 'lucide-react';
 import { eventService, type EventData } from '../services/api';
 import { getApiBaseUrl, getMediaBaseUrl, getAbsoluteMediaUrl } from '../services/apiConfig';
+import { AdminLogin } from './AdminLogin';
 import './AdminPanel.css';
 
 export const AdminPanel: React.FC = () => {
     const [activeView, setActiveView] = useState<'dashboard' | 'events' | 'users' | 'reports' | 'system'>('dashboard');
-    const [authError, setAuthError] = useState<string | null>(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [adminUser, setAdminUser] = useState<any>(null);
 
-    // Check authentication on mount
+    // Check admin authentication on mount
     useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            setAuthError('No authentication token found. Please log in to use the admin panel.');
-        } else {
-            setAuthError(null);
+        const adminToken = localStorage.getItem('adminToken');
+        const adminUserData = localStorage.getItem('adminUser');
+        
+        if (adminToken && adminUserData) {
+            try {
+                const user = JSON.parse(adminUserData);
+                if (user.isAdmin) {
+                    setIsAuthenticated(true);
+                    setAdminUser(user);
+                } else {
+                    // Clear invalid admin data
+                    localStorage.removeItem('adminToken');
+                    localStorage.removeItem('adminUser');
+                }
+            } catch (e) {
+                localStorage.removeItem('adminToken');
+                localStorage.removeItem('adminUser');
+            }
         }
     }, []);
+
+    const handleAdminLogin = (data: { token: string; user: any }) => {
+        localStorage.setItem('adminToken', data.token);
+        localStorage.setItem('adminUser', JSON.stringify(data.user));
+        setIsAuthenticated(true);
+        setAdminUser(data.user);
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminUser');
+        setIsAuthenticated(false);
+        setAdminUser(null);
+    };
+
+    // Show login if not authenticated
+    if (!isAuthenticated) {
+        return <AdminLogin onLogin={handleAdminLogin} />;
+    }
 
     return (
         <div className="admin-container">
@@ -77,26 +111,15 @@ export const AdminPanel: React.FC = () => {
                                         'System Tools'}
                     </h1>
                     <div className="user-profile">
-                        <div className="avatar glass">AD</div>
-                        <span>Admin User</span>
+                        <div className="avatar glass">{adminUser?.name?.charAt(0).toUpperCase() || 'A'}</div>
+                        <span>{adminUser?.name || adminUser?.email || 'Admin'}</span>
+                        <button onClick={handleLogout} className="logout-btn" title="Logout">
+                            <LogOut size={16} />
+                        </button>
                     </div>
                 </header>
 
                 <section className="admin-content">
-                    {authError && (
-                        <div className="error-message" style={{ 
-                            padding: '1rem', 
-                            margin: '1rem', 
-                            backgroundColor: 'rgba(255, 0, 0, 0.1)', 
-                            border: '1px solid rgba(255, 0, 0, 0.3)',
-                            borderRadius: '8px',
-                            color: '#ff4444'
-                        }}>
-                            <strong>Authentication Required:</strong> {authError}
-                            <br />
-                            <small>Please log in at <a href="/app/login" style={{ color: '#4a9eff' }}>/app/login</a> to use admin features.</small>
-                        </div>
-                    )}
                     {activeView === 'dashboard' ? <AdminDashboard /> :
                         activeView === 'events' ? <EventUpload /> :
                             activeView === 'users' ? <UserManagement /> :
@@ -186,6 +209,11 @@ const EventUpload = () => {
     const fetchEvents = async () => {
         setLoading(true);
         try {
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found.');
+            }
+
             const apiUrl = `${getApiBaseUrl()}/admin/events`;
             console.log('🔗 Fetching events from:', apiUrl);
             
@@ -193,8 +221,8 @@ const EventUpload = () => {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                },
-                credentials: 'include', // Include cookies/credentials
+                    'Authorization': `Bearer ${adminToken}`
+                }
             });
             
             console.log('📡 Response status:', response.status, response.statusText);
@@ -224,6 +252,11 @@ const EventUpload = () => {
 
     const fetchEventDetails = async (eventId: string) => {
         try {
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found.');
+            }
+
             const apiUrl = `${getApiBaseUrl()}/admin/events/${eventId}/stats`;
             console.log('🔗 Fetching event details from:', apiUrl);
             
@@ -231,8 +264,8 @@ const EventUpload = () => {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                },
-                credentials: 'include',
+                    'Authorization': `Bearer ${adminToken}`
+                }
             });
             
             if (!response.ok) {
@@ -260,19 +293,18 @@ const EventUpload = () => {
         formData.append('file', file);
 
         try {
-            const token = localStorage.getItem('token');
+            const adminToken = localStorage.getItem('adminToken');
             
-            // Check if token exists
-            if (!token) {
-                throw new Error('No authentication token found. Please log in first.');
+            // Check if admin token exists
+            if (!adminToken) {
+                throw new Error('No admin authentication token found. Please log in first.');
             }
 
             const response = await fetch(`${getApiBaseUrl()}/auth/upload`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${adminToken}`
                 },
-                credentials: 'include', // Include cookies/credentials
                 body: formData
             });
 
@@ -316,6 +348,11 @@ const EventUpload = () => {
 
         setLoading(true);
         try {
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found. Please log in again.');
+            }
+
             // Convert datetime-local value to UTC ISO string to prevent timezone shift
             // datetime-local gives format "YYYY-MM-DDTHH:mm" in local time
             // We need to convert it to UTC ISO string so server stores correct time
@@ -325,11 +362,56 @@ const EventUpload = () => {
                 const localDate = new Date(formData.date);
                 dateToSend = localDate.toISOString();
             }
+
+            // Prepare event data, excluding password if empty
+            const eventData: any = {
+                name: formData.name,
+                date: dateToSend,
+                location: formData.location,
+                imageUrl: formData.imageUrl || '/default-event.png',
+                description: formData.description || '',
+                eventType: formData.eventType || 'straight',
+                maxMaleParticipants: formData.maxMaleParticipants || 10,
+                maxFemaleParticipants: formData.maxFemaleParticipants || 10,
+                minAge: formData.minAge || 18,
+                maxAge: formData.maxAge || 99
+            };
+
+            // Only include password if provided
+            if (formData.password && formData.password.trim()) {
+                eventData.password = formData.password;
+            }
+
+            const apiUrl = `${getApiBaseUrl()}/events`;
+            console.log('🔗 Creating event at:', apiUrl);
             
-            await eventService.createEvent({
-                ...formData,
-                date: dateToSend
-            } as EventData);
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${adminToken}`
+                },
+                body: JSON.stringify(eventData)
+            });
+
+            console.log('📡 Response status:', response.status, response.statusText);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Error response:', errorText);
+                let errorMessage = 'Failed to create event';
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMessage = errorData.message || errorMessage;
+                } catch (e) {
+                    errorMessage = `${errorMessage}: ${response.status} ${response.statusText}`;
+                }
+                throw new Error(errorMessage);
+            }
+
+            const createdEvent = await response.json();
+            console.log('✅ Event created:', createdEvent);
+
             setFormData({
                 name: '',
                 date: '',
@@ -345,9 +427,10 @@ const EventUpload = () => {
             });
             await fetchEvents();
             setError(null);
-        } catch (err) {
-            setError('Failed to create event');
-            console.error(err);
+        } catch (err: any) {
+            const errorMessage = err.message || 'Failed to create event';
+            console.error('❌ Create event error:', err);
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -357,11 +440,41 @@ const EventUpload = () => {
         if (!confirm('Are you sure you want to delete this event?')) return;
 
         try {
-            await eventService.deleteEvent(id);
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found. Please log in again.');
+            }
+
+            const apiUrl = `${getApiBaseUrl()}/events/${id}`;
+            console.log('🔗 Deleting event at:', apiUrl);
+            
+            const response = await fetch(apiUrl, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${adminToken}`
+                }
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Error response:', errorText);
+                let errorMessage = 'Failed to delete event';
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMessage = errorData.message || errorMessage;
+                } catch (e) {
+                    errorMessage = `${errorMessage}: ${response.status} ${response.statusText}`;
+                }
+                throw new Error(errorMessage);
+            }
+
+            console.log('✅ Event deleted successfully');
             await fetchEvents();
-        } catch (err) {
-            alert('Failed to delete event');
-            console.error(err);
+        } catch (err: any) {
+            const errorMessage = err.message || 'Failed to delete event';
+            console.error('❌ Delete event error:', err);
+            alert(errorMessage);
         }
     };
 
@@ -792,7 +905,16 @@ const UserManagement = () => {
     const fetchUsers = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${getApiBaseUrl()}/admin/users`);
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found.');
+            }
+
+            const response = await fetch(`${getApiBaseUrl()}/admin/users`, {
+                headers: {
+                    'Authorization': `Bearer ${adminToken}`
+                }
+            });
             const data = await response.json();
             setUsers(data.users);
         } catch (err) {
@@ -804,7 +926,16 @@ const UserManagement = () => {
 
     const fetchUserDetails = async (userId: string) => {
         try {
-            const response = await fetch(`${getApiBaseUrl()}/admin/users/${userId}`);
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found.');
+            }
+
+            const response = await fetch(`${getApiBaseUrl()}/admin/users/${userId}`, {
+                headers: {
+                    'Authorization': `Bearer ${adminToken}`
+                }
+            });
             const data = await response.json();
             console.log('User details fetched:', data);
             console.log('Photos:', data.user?.photos);
@@ -820,9 +951,17 @@ const UserManagement = () => {
         if (!reason) return;
 
         try {
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found.');
+            }
+
             const response = await fetch(`${getApiBaseUrl()}/admin/users/${userId}/status`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${adminToken}`
+                },
                 body: JSON.stringify({ action, reason })
             });
 
@@ -1234,7 +1373,16 @@ const ReportsManagement = () => {
     const fetchReports = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${getApiBaseUrl()}/admin/reports?status=${filter}`);
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found.');
+            }
+
+            const response = await fetch(`${getApiBaseUrl()}/admin/reports?status=${filter}`, {
+                headers: {
+                    'Authorization': `Bearer ${adminToken}`
+                }
+            });
             const data = await response.json();
             setReports(data.reports);
         } catch (err) {
@@ -1252,9 +1400,17 @@ const ReportsManagement = () => {
         const adminNotes = prompt('Admin notes (optional):');
 
         try {
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found.');
+            }
+
             const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportId}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${adminToken}`
+                },
                 body: JSON.stringify({ status, actionTaken, adminNotes, adminId: 'admin' })
             });
 
@@ -1389,11 +1545,17 @@ const SystemTools = () => {
 
     const handleForceLogout = async () => {
         try {
+            const adminToken = localStorage.getItem('adminToken');
+            if (!adminToken) {
+                throw new Error('No admin authentication token found.');
+            }
+
             setForceLogoutStatus('Sending logout command...');
             const response = await fetch(`${getApiBaseUrl()}/admin/force-logout-all`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${adminToken}`
                 },
             });
 

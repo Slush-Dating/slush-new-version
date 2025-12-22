@@ -5,15 +5,18 @@ import Event from '../models/Event.js';
 import EventBooking from '../models/EventBooking.js';
 import Match from '../models/Match.js';
 import Report from '../models/Report.js';
+import { adminAuth } from '../middleware/adminAuth.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
+// Apply admin authentication middleware to all routes
+router.use(adminAuth);
+
 // Force logout all users (clear authentication)
 router.post('/force-logout-all', async (req, res) => {
     try {
-        // This endpoint doesn't require authentication for emergency purposes
-        // In production, you'd want to add admin authentication
+        // Admin authentication is now handled by middleware
 
         // Broadcast logout event to all connected sockets
         const io = req.app.get('io');

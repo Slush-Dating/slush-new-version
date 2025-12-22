@@ -65,7 +65,7 @@ jobs:
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
           source: "dist/*"
-          target: "/root/slush-app/dist/"
+          target: "/root/slush-staging/dist/"
           strip_components: 1
           rm: true
 
@@ -120,7 +120,7 @@ jobs:
           script: |
             pm2 list
             nginx -t
-            ls -la /root/slush-app/dist/
+            ls -la /root/slush-staging/dist/
             echo "✅ Staging deployment complete!"
             echo "🔗 Access at: https://staging.slushdating.com"
 

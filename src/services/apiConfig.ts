@@ -111,7 +111,15 @@ export const getApiBaseUrl = (): string => {
     // This is especially important for self-signed certificates
     const isProductionDomain = hostname.endsWith('slushdating.com') ||
         hostname.startsWith('staging.');
-    const isSameDomain = hostname === currentHostname ||
+    const currentPort = window.location.port;
+    const expectedServerPort = isProductionDomain ? '' : '5001';
+
+    // Check if we're on the same origin (hostname + port)
+    // In development, frontend is on 5175 and backend on 5001, so different origins
+    const isSameOrigin = hostname === currentHostname &&
+        (!currentPort || currentPort === expectedServerPort || currentPort === '80' || currentPort === '443');
+
+    const isSameDomain = isSameOrigin ||
         (isProductionDomain && currentHostname.endsWith('slushdating.com'));
 
     if (isSameDomain) {

@@ -147,6 +147,13 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
             ...genderFilter
         };
 
+        // Exclude admin users in staging and production environments
+        const isProduction = process.env.NODE_ENV === 'production';
+        const isStaging = process.env.NODE_ENV === 'staging' || process.env.VITE_ENV === 'staging';
+        if (isProduction || isStaging) {
+            query.isAdmin = { $ne: true };
+        }
+
         const potentialPartners = await User.find(query)
             .select('name dob gender bio photos')
             .limit(50)

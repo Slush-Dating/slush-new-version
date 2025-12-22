@@ -59,6 +59,13 @@ router.get('/feed', authenticate, async (req, res) => {
             onboardingCompleted: true
         };
 
+        // Exclude admin users in staging and production environments
+        const isProduction = process.env.NODE_ENV === 'production';
+        const isStaging = process.env.NODE_ENV === 'staging' || process.env.VITE_ENV === 'staging';
+        if (isProduction || isStaging) {
+            query.isAdmin = { $ne: true };
+        }
+
         // Debug: Log query details
         const totalUsers = await User.countDocuments({});
         const excludedCount = excludedUserIds.length;
@@ -179,6 +186,13 @@ router.get('/event-partners', authenticate, async (req, res) => {
             _id: { $nin: excludedUserIds.map(id => new mongoose.Types.ObjectId(id)) },
             onboardingCompleted: true
         };
+
+        // Exclude admin users in staging and production environments
+        const isProduction = process.env.NODE_ENV === 'production';
+        const isStaging = process.env.NODE_ENV === 'staging' || process.env.VITE_ENV === 'staging';
+        if (isProduction || isStaging) {
+            query.isAdmin = { $ne: true };
+        }
 
         // Apply gender filtering based on event type
         if (eventType === 'straight') {

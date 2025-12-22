@@ -59,12 +59,8 @@ router.get('/feed', authenticate, async (req, res) => {
             onboardingCompleted: true
         };
 
-        // Exclude admin users in staging and production environments
-        const isProduction = process.env.NODE_ENV === 'production';
-        const isStaging = process.env.NODE_ENV === 'staging' || process.env.VITE_ENV === 'staging';
-        if (isProduction || isStaging) {
-            query.isAdmin = { $ne: true };
-        }
+        // Always exclude admin users from discovery feed (admin users are for authentication only)
+        query.isAdmin = { $ne: true };
 
         // Debug: Log query details
         const totalUsers = await User.countDocuments({});
@@ -187,12 +183,8 @@ router.get('/event-partners', authenticate, async (req, res) => {
             onboardingCompleted: true
         };
 
-        // Exclude admin users in staging and production environments
-        const isProduction = process.env.NODE_ENV === 'production';
-        const isStaging = process.env.NODE_ENV === 'staging' || process.env.VITE_ENV === 'staging';
-        if (isProduction || isStaging) {
-            query.isAdmin = { $ne: true };
-        }
+        // Always exclude admin users from discovery feed (admin users are for authentication only)
+        query.isAdmin = { $ne: true };
 
         // Apply gender filtering based on event type
         if (eventType === 'straight') {

@@ -209,10 +209,28 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
     }
   };
 
-  // Fetch unread count on mount and when activeTab changes
+  // Fetch user's current bookings to restore booked event state
+  const fetchUserBookings = async () => {
+    try {
+      const bookings = await eventService.getUserBookings();
+      // Set the most recent active booking
+      if (bookings.length > 0) {
+        const mostRecentBooking = bookings[0]; // Already sorted by bookedAt desc
+        setBookedEventId(mostRecentBooking.eventId._id);
+        console.log('Restored booked event:', mostRecentBooking.eventId.name);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user bookings:', error);
+    }
+  };
+
+  // Fetch unread count and user bookings on mount
   useEffect(() => {
     fetchUnreadCount();
-  }, []);
+    if (user) {
+      fetchUserBookings();
+    }
+  }, [user]);
 
   // Set up persistent socket connection and listeners once on mount
   // This ensures real-time updates work regardless of which tab is active

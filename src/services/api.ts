@@ -221,6 +221,27 @@ export const eventService = {
         }
         return response.json();
     },
+
+    getUserBookings: async (): Promise<any[]> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/events/user/bookings`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to fetch user bookings');
+        }
+
+        return response.json();
+    },
 };
 
 export interface AgoraTokenResponse {

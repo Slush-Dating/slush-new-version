@@ -297,6 +297,28 @@ router.get('/:id/booking-status', authMiddleware, async (req, res) => {
     }
 });
 
+// GET user's current bookings
+router.get('/user/bookings', authMiddleware, async (req, res) => {
+    try {
+        const bookings = await EventBooking.find({
+            userId: req.userId,
+            status: 'booked'
+        })
+        .populate('eventId', 'name date location imageUrl description eventType minAge maxAge maleCount femaleCount otherCount maxMaleParticipants maxFemaleParticipants isPasswordProtected')
+        .sort({ bookedAt: -1 });
+
+        // Filter out bookings for events that have already passed
+        const now = new Date();
+        const activeBookings = bookings.filter(booking => {
+            return booking.eventId && booking.eventId.date > now;
+        });
+
+        res.json(activeBookings);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // POST a new event
 router.post('/', async (req, res) => {
     const event = new Event({

@@ -6,6 +6,17 @@ import './AdminPanel.css';
 
 export const AdminPanel: React.FC = () => {
     const [activeView, setActiveView] = useState<'dashboard' | 'events' | 'users' | 'reports' | 'system'>('dashboard');
+    const [authError, setAuthError] = useState<string | null>(null);
+
+    // Check authentication on mount
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            setAuthError('No authentication token found. Please log in to use the admin panel.');
+        } else {
+            setAuthError(null);
+        }
+    }, []);
 
     return (
         <div className="admin-container">
@@ -72,6 +83,20 @@ export const AdminPanel: React.FC = () => {
                 </header>
 
                 <section className="admin-content">
+                    {authError && (
+                        <div className="error-message" style={{ 
+                            padding: '1rem', 
+                            margin: '1rem', 
+                            backgroundColor: 'rgba(255, 0, 0, 0.1)', 
+                            border: '1px solid rgba(255, 0, 0, 0.3)',
+                            borderRadius: '8px',
+                            color: '#ff4444'
+                        }}>
+                            <strong>Authentication Required:</strong> {authError}
+                            <br />
+                            <small>Please log in at <a href="/app/login" style={{ color: '#4a9eff' }}>/app/login</a> to use admin features.</small>
+                        </div>
+                    )}
                     {activeView === 'dashboard' ? <AdminDashboard /> :
                         activeView === 'events' ? <EventUpload /> :
                             activeView === 'users' ? <UserManagement /> :
@@ -161,13 +186,37 @@ const EventUpload = () => {
     const fetchEvents = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${getApiBaseUrl()}/admin/events`);
+            const apiUrl = `${getApiBaseUrl()}/admin/events`;
+            console.log('🔗 Fetching events from:', apiUrl);
+            
+            const response = await fetch(apiUrl, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include', // Include cookies/credentials
+            });
+            
+            console.log('📡 Response status:', response.status, response.statusText);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Error response:', errorText);
+                throw new Error(`Failed to fetch events: ${response.status} ${response.statusText}`);
+            }
+            
             const data = await response.json();
-            setEvents(data.events);
+            console.log('✅ Events fetched:', data);
+            setEvents(data.events || []);
             setError(null);
-        } catch (err) {
-            setError('Failed to load events');
-            console.error(err);
+        } catch (err: any) {
+            const errorMessage = err.message || 'Failed to load events';
+            console.error('❌ Fetch events error:', err);
+            setError(errorMessage);
+            // Show more detailed error in console for debugging
+            if (err.message?.includes('Failed to fetch') || err.message?.includes('ERR_CERT')) {
+                console.error('💡 SSL/Certificate issue detected. Check browser console for certificate warnings.');
+            }
         } finally {
             setLoading(false);
         }
@@ -175,7 +224,21 @@ const EventUpload = () => {
 
     const fetchEventDetails = async (eventId: string) => {
         try {
-            const response = await fetch(`${getApiBaseUrl()}/admin/events/${eventId}/stats`);
+            const apiUrl = `${getApiBaseUrl()}/admin/events/${eventId}/stats`;
+            console.log('🔗 Fetching event details from:', apiUrl);
+            
+            const response = await fetch(apiUrl, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to fetch event details: ${response.status} ${response.statusText}`);
+            }
+            
             const data = await response.json();
             setSelectedEvent(data);
         } catch (err) {
@@ -198,21 +261,48 @@ const EventUpload = () => {
 
         try {
             const token = localStorage.getItem('token');
+            
+            // Check if token exists
+            if (!token) {
+                throw new Error('No authentication token found. Please log in first.');
+            }
+
             const response = await fetch(`${getApiBaseUrl()}/auth/upload`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`
                 },
+                credentials: 'include', // Include cookies/credentials
                 body: formData
             });
 
-            if (!response.ok) throw new Error('Upload failed');
+            if (!response.ok) {
+                // Try to get error message from response
+                let errorMessage = 'Upload failed';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.message || errorMessage;
+                } catch (e) {
+                    // If response is not JSON, use status text
+                    errorMessage = response.statusText || errorMessage;
+                }
+                
+                // Provide more specific error messages
+                if (response.status === 401) {
+                    errorMessage = 'Authentication failed. Your session may have expired. Please log in again.';
+                }
+                
+                throw new Error(errorMessage);
+            }
 
             const data = await response.json();
             setFormData(prev => ({ ...prev, imageUrl: data.url }));
-        } catch (err) {
+            setError(null);
+        } catch (err: any) {
             console.error('Error uploading image:', err);
-            alert('Failed to upload image');
+            const errorMessage = err.message || 'Failed to upload image. Please ensure you are logged in and try again.';
+            setError(errorMessage);
+            alert(errorMessage);
         } finally {
             setUploadingImage(false);
         }
@@ -226,7 +316,20 @@ const EventUpload = () => {
 
         setLoading(true);
         try {
-            await eventService.createEvent(formData as EventData);
+            // Convert datetime-local value to UTC ISO string to prevent timezone shift
+            // datetime-local gives format "YYYY-MM-DDTHH:mm" in local time
+            // We need to convert it to UTC ISO string so server stores correct time
+            let dateToSend = formData.date;
+            if (formData.date && !formData.date.includes('Z') && !formData.date.includes('+')) {
+                // Parse the local datetime and convert to UTC ISO string
+                const localDate = new Date(formData.date);
+                dateToSend = localDate.toISOString();
+            }
+            
+            await eventService.createEvent({
+                ...formData,
+                date: dateToSend
+            } as EventData);
             setFormData({
                 name: '',
                 date: '',

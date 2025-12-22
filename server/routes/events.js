@@ -25,14 +25,17 @@ const authMiddleware = async (req, res, next) => {
     }
 };
 
-// GET all events (only upcoming ones)
+// GET all events (only upcoming ones by default, use ?includeAll=true for all)
 router.get('/', async (req, res) => {
     try {
-        const events = await Event.find({
-            date: { $gte: new Date() }
-        }).sort({ date: 1 });
+        const includeAll = req.query.includeAll === 'true';
+        const filter = includeAll ? {} : { date: { $gte: new Date() } };
+        const events = await Event.find(filter).sort({ date: 1 });
+
+        console.log(`[Events API] Returning ${events.length} events (includeAll: ${includeAll})`);
         res.json(events);
     } catch (err) {
+        console.error('[Events API] Error fetching events:', err.message);
         res.status(500).json({ message: err.message });
     }
 });
@@ -317,8 +320,10 @@ router.post('/', async (req, res) => {
 
     try {
         const newEvent = await event.save();
+        console.log(`[Events API] Created event: ${newEvent._id}, name: ${newEvent.name}, date: ${newEvent.date}, imageUrl: ${newEvent.imageUrl}`);
         res.status(201).json(newEvent);
     } catch (err) {
+        console.error('[Events API] Error creating event:', err.message);
         res.status(400).json({ message: err.message });
     }
 });

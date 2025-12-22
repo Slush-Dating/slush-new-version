@@ -68,31 +68,69 @@ const getServerHost = (): string => {
  */
 export const getApiBaseUrl = (): string => {
     const hostname = getServerHost();
+    const currentHostname = window.location.hostname;
+    const currentProtocol = window.location.protocol;
 
     // Check if hostname is already a full URL (from VITE_API_URL)
     const isFullUrl = hostname.startsWith('http');
 
     if (isFullUrl) {
-        // If we have a full URL from VITE_API_URL, just append /api
-        const apiUrl = `${hostname}/api`;
-        console.log('🔗 API Base URL:', apiUrl);
-        return apiUrl;
+        // Check if the VITE_API_URL is pointing to the same domain as the current page
+        // If so, use relative URLs to avoid SSL certificate issues
+        try {
+            const apiUrlObj = new URL(hostname);
+            const apiHostname = apiUrlObj.hostname;
+
+            // More comprehensive same-domain detection
+            const isSameDomain = apiHostname === currentHostname ||
+                // Both are slushdating.com domains (handles www.slushdating.com and staging.slushdating.com)
+                (apiHostname.includes('slushdating.com') && currentHostname.includes('slushdating.com')) ||
+                // Both are www subdomain
+                (apiHostname.startsWith('www.') && currentHostname.startsWith('www.') &&
+                    apiHostname.replace('www.', '') === currentHostname.replace('www.', ''));
+
+            if (isSameDomain) {
+                // Use relative URL - browser will use same certificate as page load
+                console.log('🔗 API Base URL (relative, same domain detected):', '/api');
+                console.log('   Current page:', `${currentProtocol}//${currentHostname}`);
+                console.log('   API would be:', `${currentProtocol}//${currentHostname}/api`);
+                return '/api';
+            } else {
+                // Different domain - use full URL from VITE_API_URL
+                const apiUrl = `${hostname}/api`;
+                console.log('🔗 API Base URL (different domain):', apiUrl);
+                return apiUrl;
+            }
+        } catch (error) {
+            // If URL parsing fails, log error and fall through to auto-detection
+            console.warn('⚠️ Failed to parse VITE_API_URL:', hostname, error);
+        }
+    }
+
+    // Use relative URL when on the same domain to avoid SSL certificate issues
+    // This is especially important for self-signed certificates
+    const isProductionDomain = hostname.endsWith('slushdating.com') ||
+        hostname.startsWith('staging.');
+    const isSameDomain = hostname === currentHostname ||
+        (isProductionDomain && currentHostname.endsWith('slushdating.com'));
+
+    if (isSameDomain) {
+        // Use relative URL - browser will use same certificate as page load
+        console.log('🔗 API Base URL (relative, same hostname):', '/api');
+        return '/api';
     }
 
     // Use http protocol for local development, respect current protocol otherwise
     // For production domain, don't include port (nginx handles routing)
-    const hostForCheck = hostname;
-    const isProductionDomain = hostForCheck.endsWith('slushdating.com') ||
-        hostForCheck.startsWith('staging.');
     const protocol = (hostname === 'localhost' || hostname.startsWith('192.168.') || hostname.startsWith('10.'))
         ? 'http:'
-        : window.location.protocol;
+        : currentProtocol;
 
     // Production domain uses nginx proxy, no port needed
     const port = isProductionDomain ? '' : ':5001';
     const apiUrl = `${protocol}//${hostname}${port}/api`;
 
-    console.log('🔗 API Base URL:', apiUrl);
+    console.log('🔗 API Base URL (absolute):', apiUrl);
     return apiUrl;
 };
 
@@ -102,26 +140,61 @@ export const getApiBaseUrl = (): string => {
  */
 export const getSocketUrl = (): string => {
     const hostname = getServerHost();
+    const currentHostname = window.location.hostname;
+    const currentProtocol = window.location.protocol;
 
-    // Use http protocol for local development, respect current protocol otherwise
-    // For production domain, don't include port (nginx handles routing)
+    // Check if hostname is already a full URL (from VITE_API_URL)
     const isFullUrl = hostname.startsWith('http');
-    const hostForCheck = isFullUrl ? new URL(hostname).hostname : hostname;
-    const isProductionDomain = hostForCheck.endsWith('slushdating.com') ||
-        hostForCheck.startsWith('staging.');
 
-    // If we got a full URL from VITE_API_URL, use it directly (without /api path)
     if (isFullUrl) {
-        return hostname;
+        try {
+            const apiUrlObj = new URL(hostname);
+            const apiHostname = apiUrlObj.hostname;
+
+            // Check if socket server is on same domain as current page
+            const isSameDomain = apiHostname === currentHostname ||
+                (apiHostname.includes('slushdating.com') && currentHostname.includes('slushdating.com')) ||
+                (apiHostname.startsWith('www.') && currentHostname.startsWith('www.') &&
+                    apiHostname.replace('www.', '') === currentHostname.replace('www.', ''));
+
+            if (isSameDomain) {
+                // Use relative path - browser will automatically use correct protocol and same certificate
+                // Socket.io will connect to the same origin as the page
+                console.log('🔌 Socket URL (relative, same domain):', window.location.origin);
+                return window.location.origin;
+            } else {
+                // Different domain - use the full URL from VITE_API_URL
+                console.log('🔌 Socket URL (different domain):', hostname);
+                return hostname;
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to parse URL for socket:', hostname, error);
+            // Fall through to auto-detection
+        }
     }
 
+    // Auto-detect based on hostname
+    const isProductionDomain = hostname.endsWith('slushdating.com') ||
+        hostname.startsWith('staging.');
+    const isSameDomain = hostname === currentHostname ||
+        (isProductionDomain && currentHostname.endsWith('slushdating.com'));
+
+    if (isSameDomain) {
+        // Use current origin - browser handles protocol and certificate automatically
+        console.log('🔌 Socket URL (relative, same hostname):', window.location.origin);
+        return window.location.origin;
+    }
+
+    // Different hostname - build absolute URL
     const protocol = (hostname === 'localhost' || hostname.startsWith('192.168.') || hostname.startsWith('10.'))
         ? 'http:'
-        : window.location.protocol;
+        : currentProtocol;
 
     // Production domain uses nginx proxy, no port needed
     const port = isProductionDomain ? '' : ':5001';
-    return `${protocol}//${hostname}${port}`;
+    const socketUrl = `${protocol}//${hostname}${port}`;
+    console.log('🔌 Socket URL (absolute):', socketUrl);
+    return socketUrl;
 };
 
 /**

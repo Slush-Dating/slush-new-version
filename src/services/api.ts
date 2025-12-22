@@ -492,7 +492,16 @@ export const discoveryService = {
             throw new Error('Not authenticated');
         }
 
-        const url = new URL(`${API_BASE_URL}/discovery/feed`);
+        // Construct the feed URL, handling both absolute and relative API base URLs
+        let feedUrl: string;
+        if (API_BASE_URL.startsWith('http')) {
+            // Absolute URL – safe to use directly
+            feedUrl = `${API_BASE_URL}/discovery/feed`;
+        } else {
+            // Relative URL – prepend the current origin to form a full URL
+            feedUrl = `${window.location.origin}${API_BASE_URL}/discovery/feed`;
+        }
+        const url = new URL(feedUrl);
         if (limit) {
             url.searchParams.append('limit', limit.toString());
         }

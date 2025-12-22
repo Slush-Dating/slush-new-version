@@ -255,15 +255,15 @@ router.get('/profile/:userId', async (req, res) => {
 router.post('/upload', (req, res) => {
     // Verify authentication
     const authHeader = req.headers.authorization;
-    if (!authHeader) {
-        return res.status(401).json({ message: 'No token provided' });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ message: 'Authorization header missing or malformed' });
     }
 
     const token = authHeader.split(' ')[1];
     try {
         jwt.verify(token, JWT_SECRET);
     } catch (err) {
-        return res.status(401).json({ message: 'Invalid token' });
+        return res.status(401).json({ message: 'Invalid or expired token' });
     }
 
     // Handle file upload with proper error handling

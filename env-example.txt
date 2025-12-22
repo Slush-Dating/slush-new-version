@@ -16,3 +16,6 @@ VITE_API_URL=https://www.slushdating.com/api
 
 # Optional: Old database URI for migration scripts
 OLD_MONGODB_URI=mongodb://localhost:27017/slush
+
+
+

@@ -10,6 +10,16 @@ The setup provides:
 - **`/app`** → Serves the React frontend application
 - **`/socket.io`** → Proxies WebSocket connections to backend
 - **`/uploads`** → Proxies media files from backend
+- **`/`** → Serves marketing site from `/root/slush-app/marketing/` (SEPARATE - never deploy from this repo)
+
+## ⚠️  CRITICAL: Marketing Site Protection
+
+**The marketing site at `www.slushdating.com` (`/`) is SEPARATE and must NEVER be overwritten.**
+
+- The marketing site is served from `/root/slush-app/marketing/` on the server
+- **DO NOT** deploy the `marketing/` folder from this repository
+- Only deploy proxies (`/app`, `/api`, `/admin`) - never touch the marketing directory
+- The `marketing/` folder in this repo is for reference only, not for deployment
 
 ## Prerequisites
 
@@ -187,4 +197,7 @@ After setup:
 ---
 
 **That's it!** Your proxies are now set up and ready to use. 🎉
+
+
+
 

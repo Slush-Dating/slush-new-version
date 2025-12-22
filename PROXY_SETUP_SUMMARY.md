@@ -31,6 +31,11 @@
 | `/api` | Proxies to `localhost:5001` | Proxy |
 | `/socket.io` | Proxies to `localhost:5001` | Proxy (WebSocket) |
 | `/uploads` | Proxies to `localhost:5001` | Proxy |
+| `/` | Serves marketing site from `/root/slush-app/marketing/` | Static (SEPARATE - never deploy) |
+
+## ⚠️  IMPORTANT: Marketing Site Protection
+
+**DO NOT deploy the `marketing/` folder** - it will overwrite `www.slushdating.com`. Only deploy proxies (`/app`, `/api`, `/admin`).
 
 ## Testing
 
@@ -52,4 +57,7 @@ curl -I https://www.slushdating.com/admin
 - React Router handles the `/admin` route within the app
 
 For detailed instructions, see `WWW_SLUSHDATING_SETUP.md`.
+
+
+
 

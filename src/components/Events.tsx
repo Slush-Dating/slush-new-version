@@ -110,6 +110,7 @@ export const Events: React.FC<EventsProps> = ({ onJoin, user, bookedEventId, onJ
                 setLoading(true);
                 setError(null);
                 const data = await eventService.getAllEvents();
+                console.log('[Events] Fetched events:', data.length, data);
                 // Ensure data is an array
                 if (Array.isArray(data)) {
                     setEvents(data);
@@ -421,6 +422,10 @@ export const Events: React.FC<EventsProps> = ({ onJoin, user, bookedEventId, onJ
                                             src={getImageUrl(event.imageUrl) || '/default-event.png'}
                                             alt={event.name}
                                             className="event-image"
+                                            onError={(e) => {
+                                                console.warn('[Events] Image load failed:', event.imageUrl);
+                                                (e.target as HTMLImageElement).src = '/default-event.png';
+                                            }}
                                         />
                                         <div className="event-tags">
                                             <span className="event-tag age-tag">

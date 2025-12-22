@@ -68,3 +68,6 @@ document.querySelectorAll('.primary-button, .cta-button').forEach(button => {
         console.log('Button clicked:', this.textContent.trim());
     });
 });
+
+
+

@@ -152,17 +152,23 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, onMatch }) 
                 setError(null);
                 const feed = await discoveryService.getFeed(20);
 
-                // Convert DiscoveryProfile to Profile format
-                const formattedProfiles: Profile[] = feed.map(p => ({
-                    id: p.id,
-                    userId: p.userId,
-                    name: p.name,
-                    age: p.age || 0,
-                    bio: p.bio,
-                    videoUrl: p.videoUrl || '',
-                    distance: p.distance,
-                    thumbnail: p.thumbnail
-                }));
+                // Convert DiscoveryProfile to Profile format and filter out admin users as a safeguard
+                const formattedProfiles: Profile[] = feed
+                    .filter(p => {
+                        const name = p.name || '';
+                        const email = (p as any).email || ''; // email might not be in DiscoveryProfile but just in case
+                        return !name.toLowerCase().includes('admin') && !email.toLowerCase().includes('admin');
+                    })
+                    .map(p => ({
+                        id: p.id,
+                        userId: p.userId,
+                        name: p.name,
+                        age: p.age || 0,
+                        bio: p.bio,
+                        videoUrl: p.videoUrl || '',
+                        distance: p.distance,
+                        thumbnail: p.thumbnail
+                    }));
 
                 setProfiles(formattedProfiles);
 

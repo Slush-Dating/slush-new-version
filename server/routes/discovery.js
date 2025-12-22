@@ -60,7 +60,12 @@ router.get('/feed', authenticate, async (req, res) => {
         };
 
         // Always exclude admin users from discovery feed (admin users are for authentication only)
-        query.isAdmin = { $ne: true };
+        // Check for isAdmin flag, and also as a safeguard, exclude users with 'admin' in name or email
+        query.$and = [
+            { isAdmin: { $ne: true } },
+            { email: { $not: /admin/i } },
+            { name: { $not: /admin/i } }
+        ];
 
         // Debug: Log query details
         const totalUsers = await User.countDocuments({});
@@ -184,7 +189,12 @@ router.get('/event-partners', authenticate, async (req, res) => {
         };
 
         // Always exclude admin users from discovery feed (admin users are for authentication only)
-        query.isAdmin = { $ne: true };
+        // Check for isAdmin flag, and also as a safeguard, exclude users with 'admin' in name or email
+        query.$and = [
+            { isAdmin: { $ne: true } },
+            { email: { $not: /admin/i } },
+            { name: { $not: /admin/i } }
+        ];
 
         // Apply gender filtering based on event type
         if (eventType === 'straight') {

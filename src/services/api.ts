@@ -1,11 +1,5 @@
 import type { ChatMessage } from '../types';
-
-const getApiBaseUrl = () => {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return 'http://localhost:5001/api';
-    }
-    return `http://${window.location.hostname}:5001/api`;
-};
+import { getApiBaseUrl } from './apiConfig';
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -15,7 +9,22 @@ export interface EventData {
     date: string;
     location: string;
     imageUrl?: string;
+    description?: string;
+    eventType?: 'straight' | 'gay' | 'bisexual';
+    maxMaleParticipants?: number;
+    maxFemaleParticipants?: number;
+    minAge?: number;
+    maxAge?: number;
+    maleParticipants?: string[];
+    femaleParticipants?: string[];
+    otherParticipants?: string[];
+    // Virtual fields from backend
+    maleCount?: number;
+    femaleCount?: number;
+    otherCount?: number;
+    totalParticipants?: number;
     status?: 'Scheduled' | 'Active' | 'Completed' | 'Cancelled';
+    isPasswordProtected?: boolean;
 }
 
 export interface Match {
@@ -74,8 +83,8 @@ const getAuthToken = (): string | null => {
 const handleApiError = async (response: Response): Promise<never> => {
     const error = await response.json().catch(() => ({ message: 'An error occurred' }));
 
-    // If token expired, clear auth data
-    if (response.status === 401 && (error.code === 'TOKEN_EXPIRED' || error.message?.includes('expired'))) {
+    // If token expired or invalid, clear auth data
+    if (response.status === 401 && (error.code === 'TOKEN_EXPIRED' || error.message?.includes('expired') || error.message?.includes('Invalid token'))) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         // Reload page to trigger re-authentication
@@ -87,11 +96,29 @@ const handleApiError = async (response: Response): Promise<never> => {
 
 export const eventService = {
     getAllEvents: async (): Promise<EventData[]> => {
-        const response = await fetch(`${API_BASE_URL}/events`);
-        if (!response.ok) {
-            throw new Error('Failed to fetch events');
+        try {
+            const response = await fetch(`${API_BASE_URL}/events`);
+            if (!response.ok) {
+                let errorMessage = 'Failed to fetch events';
+                try {
+                    const error = await response.json();
+                    errorMessage = error.message || errorMessage;
+                } catch (e) {
+                    errorMessage = `Server error: ${response.status} ${response.statusText}`;
+                }
+                throw new Error(errorMessage);
+            }
+            const data = await response.json();
+            // Ensure we return an array
+            return Array.isArray(data) ? data : [];
+        } catch (err: any) {
+            console.error('Error fetching events:', err);
+            // Re-throw with more context
+            if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+                throw new Error(`Cannot connect to server at ${API_BASE_URL}. Please check your network connection.`);
+            }
+            throw err;
         }
-        return response.json();
     },
 
     createEvent: async (eventData: EventData): Promise<EventData> => {
@@ -123,6 +150,142 @@ export const eventService = {
         if (!response.ok) {
             throw new Error('Failed to delete event');
         }
+    },
+
+    bookEvent: async (id: string, password?: string): Promise<{ message: string; booking: any; event: any }> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/events/${id}/book`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(password ? { password } : {})
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to book event');
+        }
+        return response.json();
+    },
+
+    cancelBooking: async (id: string): Promise<{ message: string; event: any }> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/events/${id}/book`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to cancel booking');
+        }
+        return response.json();
+    },
+
+    getBookingStatus: async (id: string): Promise<{ isBooked: boolean; booking: any | null }> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/events/${id}/booking-status`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!response.ok) {
+            if (response.status === 401) {
+                // Handle auth errors locally for booking status
+                throw new Error('Invalid token');
+            }
+            await handleApiError(response);
+        }
+        return response.json();
+    },
+
+    getParticipants: async (id: string): Promise<any> => {
+        const response = await fetch(`${API_BASE_URL}/events/${id}/participants`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch participants');
+        }
+        return response.json();
+    },
+};
+
+export interface AgoraTokenResponse {
+    token: string;
+    appId: string;
+    channelName: string;
+    uid: number;
+}
+
+export interface PartnerResponse {
+    partner: {
+        id: string;
+        userId: string;
+        name: string;
+        age: number | null;
+        bio: string;
+        imageUrl: string | null;
+    };
+    totalAvailable: number;
+}
+
+export const agoraService = {
+    getToken: async (channelName: string, uid?: number): Promise<AgoraTokenResponse> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/agora/token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ channelName, uid })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to get Agora token');
+        }
+
+        return response.json();
+    },
+
+    getNextPartner: async (eventId: string): Promise<PartnerResponse> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/agora/event/${eventId}/next-partner`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to get next partner');
+        }
+
+        return response.json();
     },
 };
 
@@ -549,6 +712,114 @@ export const chatService = {
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.message || 'Failed to report user');
+        }
+
+        return response.json();
+    },
+};
+
+export interface NotificationData {
+    id: string;
+    type: 'like' | 'match' | 'general' | 'security';
+    title: string;
+    description?: string | null;
+    actionButton?: string | null;
+    actionLink?: string | null;
+    userImage?: string | null;
+    matchId?: string | null;
+    fromUserId?: string | null;
+    isRead: boolean;
+    timestamp: string;
+    createdAt: string;
+}
+
+export interface NotificationsResponse {
+    notifications: NotificationData[];
+    isPremium: boolean;
+    unreadCount: number;
+}
+
+export const notificationService = {
+    getNotifications: async (type?: string): Promise<NotificationsResponse> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const url = new URL(`${API_BASE_URL}/notifications`);
+        if (type && type !== 'all') {
+            url.searchParams.append('type', type);
+        }
+
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+        });
+
+        if (!response.ok) {
+            await handleApiError(response);
+        }
+
+        return response.json();
+    },
+
+    getUnreadCount: async (): Promise<{ unreadCount: number }> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/notifications/unread-count`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+        });
+
+        if (!response.ok) {
+            await handleApiError(response);
+        }
+
+        return response.json();
+    },
+
+    markAsRead: async (id: string): Promise<{ success: boolean }> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/notifications/${id}/read`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+        });
+
+        if (!response.ok) {
+            await handleApiError(response);
+        }
+
+        return response.json();
+    },
+
+    markAllAsRead: async (): Promise<{ success: boolean; updated: number }> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/notifications/read-all`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+        });
+
+        if (!response.ok) {
+            await handleApiError(response);
         }
 
         return response.json();

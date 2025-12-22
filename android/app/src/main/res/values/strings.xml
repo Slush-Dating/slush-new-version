@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Slush</string>
     <string name="title_activity_main">Slush</string>
-    <string name="package_name">com.slush.app</string>
-    <string name="custom_url_scheme">com.slush.app</string>
+    <string name="package_name">com.mobile.app.virtualspeeddate</string>
+    <string name="custom_url_scheme">com.mobile.app.virtualspeeddate</string>
 </resources>

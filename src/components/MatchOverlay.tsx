@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, MessageCircle, X, User } from 'lucide-react';
+import { getMediaBaseUrl } from '../services/apiConfig';
 import './MatchOverlay.css';
 
 interface MatchData {
@@ -83,7 +84,7 @@ export const MatchOverlay: React.FC<MatchOverlayProps> = ({
                                 <div className="profile-image-container">
                                     {(currentUser.imageUrl || (currentUser.photos && currentUser.photos.length > 0)) ? (
                                         <img
-                                            src={currentUser.imageUrl || (currentUser.photos && currentUser.photos[0] ? `http://localhost:5001${currentUser.photos[0]}` : '')}
+                                            src={currentUser.imageUrl || (currentUser.photos && currentUser.photos[0] ? `${getMediaBaseUrl()}${currentUser.photos[0]}` : '')}
                                             alt={currentUser.name || 'You'}
                                             className="profile-image"
                                         />
@@ -119,9 +120,9 @@ export const MatchOverlay: React.FC<MatchOverlayProps> = ({
                                 <div className="profile-image-container">
                                     {matchData.user.imageUrl ? (
                                         <img
-                                            src={matchData.user.imageUrl.startsWith('http') 
-                                                ? matchData.user.imageUrl 
-                                                : `http://localhost:5001${matchData.user.imageUrl}`}
+                                            src={matchData.user.imageUrl.startsWith('http')
+                                                ? matchData.user.imageUrl
+                                                : `${getMediaBaseUrl()}${matchData.user.imageUrl}`}
                                             alt={matchData.user.name || 'Match'}
                                             className="profile-image"
                                             onError={(e) => {

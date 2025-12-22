@@ -1,0 +1,126 @@
+[
+  {
+    "_id": "69440a247a94525b98ad45ee",
+    "email": "test1@slush.com",
+    "name": "Sophia",
+    "dob": "2000-05-15T00:00:00.000Z",
+    "gender": "woman",
+    "interestedIn": "men",
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        0,
+        0
+      ]
+    },
+    "bio": "Finding the magic in everyday moments.",
+    "interests": [
+      "travel",
+      "photography",
+      "coffee"
+    ],
+    "photos": [
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&q=80"
+    ],
+    "videos": [
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+    ],
+    "onboardingCompleted": true,
+    "prompts": [],
+    "createdAt": "2025-12-18T14:05:24.236Z",
+    "__v": 0
+  },
+  {
+    "_id": "69440a247a94525b98ad45f1",
+    "email": "test2@slush.com",
+    "name": "Alex",
+    "dob": "1997-08-22T00:00:00.000Z",
+    "gender": "man",
+    "interestedIn": "women",
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        0,
+        0
+      ]
+    },
+    "bio": "Life is better when you are laughing.",
+    "interests": [
+      "music",
+      "bars",
+      "sports"
+    ],
+    "photos": [
+      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&q=80"
+    ],
+    "videos": [
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
+    ],
+    "onboardingCompleted": true,
+    "prompts": [],
+    "createdAt": "2025-12-18T14:05:24.252Z",
+    "__v": 0
+  },
+  {
+    "_id": "69440a247a94525b98ad45f4",
+    "email": "test3@slush.com",
+    "name": "Chloe",
+    "dob": "2002-03-10T00:00:00.000Z",
+    "gender": "woman",
+    "interestedIn": "men",
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        0,
+        0
+      ]
+    },
+    "bio": "Sunsets and good vibes only.",
+    "interests": [
+      "hiking",
+      "nature",
+      "photography"
+    ],
+    "photos": [
+      "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&q=80"
+    ],
+    "videos": [
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+    ],
+    "onboardingCompleted": true,
+    "prompts": [],
+    "createdAt": "2025-12-18T14:05:24.255Z",
+    "__v": 0
+  },
+  {
+    "_id": "69440a247a94525b98ad45f7",
+    "email": "test4@slush.com",
+    "name": "Jordan",
+    "dob": "1999-11-28T00:00:00.000Z",
+    "gender": "non-binary",
+    "interestedIn": "everyone",
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        0,
+        0
+      ]
+    },
+    "bio": "Music lover and weekend explorer.",
+    "interests": [
+      "music",
+      "concerts",
+      "art"
+    ],
+    "photos": [
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80"
+    ],
+    "videos": [
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
+    ],
+    "onboardingCompleted": true,
+    "prompts": [],
+    "createdAt": "2025-12-18T14:05:24.257Z",
+    "__v": 0
+  }
+]

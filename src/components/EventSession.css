@@ -1,7 +1,7 @@
 .session-container {
     width: 100%;
     height: 100vh;
-    background: var(--bg-offwhite);
+    background: #ffffff;
     position: absolute;
     top: 0;
     left: 0;
@@ -23,7 +23,7 @@
 
 .round-indicator {
     font-weight: 800;
-    color: var(--text-dim);
+    color: #475569;
     font-size: 14px;
     text-transform: uppercase;
 }
@@ -146,7 +146,7 @@
 }
 
 .prep-text-content p {
-    color: var(--text-dim);
+    color: #475569;
     font-size: 15px;
 }
 
@@ -207,6 +207,7 @@
     font-size: 13px;
     font-weight: 600;
     margin-bottom: 10px;
+    color: #0f172a;
 }
 
 .prep-cam-toggle {
@@ -233,7 +234,7 @@
     align-items: center;
     gap: 8px;
     font-size: 12px;
-    color: var(--text-dim);
+    color: #64748b;
     font-weight: 500;
 }
 
@@ -262,8 +263,11 @@
     right: 20px;
     padding: 20px;
     border-radius: var(--radius-lg);
-    color: white;
-    background: rgba(0, 0, 0, 0.4) !important;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.75) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .my-pip-container {
@@ -426,14 +430,14 @@
 .feedback-title {
     font-size: 28px;
     font-weight: 800;
-    color: var(--text-main);
+    color: #0f172a;
     margin-bottom: 12px;
     line-height: 1.2;
 }
 
 .feedback-subtitle {
     font-size: 15px;
-    color: var(--text-dim);
+    color: #475569;
     font-weight: 500;
     line-height: 1.5;
 }
@@ -455,7 +459,7 @@
     transition: all 0.3s var(--transition-smooth);
     cursor: pointer;
     border: 2px solid transparent;
-    background: var(--bg-offwhite);
+    background: #f8fafc;
 }
 
 .feedback-btn:hover {
@@ -477,7 +481,7 @@
 }
 
 .feedback-btn-pass {
-    color: var(--text-dim);
+    color: #475569;
 }
 
 .feedback-btn-pass:hover {
@@ -596,7 +600,7 @@
 .summary-header h2 {
     font-size: 28px;
     font-weight: 800;
-    color: var(--text-main);
+    color: #0f172a;
     margin: 0;
 }
 
@@ -615,8 +619,8 @@
     gap: 8px;
     padding: 20px 16px;
     border-radius: var(--radius-lg);
-    background: var(--bg-offwhite);
-    border: 1px solid rgba(0, 0, 0, 0.05);
+    background: #f8fafc;
+    border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .stat-icon {
@@ -634,13 +638,13 @@
 .stat-number {
     font-size: 24px;
     font-weight: 800;
-    color: var(--text-main);
+    color: #0f172a;
 }
 
 .stat-label {
     font-size: 12px;
     font-weight: 600;
-    color: var(--text-dim);
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -653,7 +657,7 @@
 .summary-partners h3 {
     font-size: 18px;
     font-weight: 700;
-    color: var(--text-main);
+    color: #0f172a;
     margin-bottom: 20px;
     text-align: left;
 }
@@ -670,8 +674,8 @@
     gap: 16px;
     padding: 16px;
     border-radius: var(--radius-lg);
-    background: var(--bg-offwhite);
-    border: 1px solid rgba(0, 0, 0, 0.05);
+    background: #f8fafc;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     transition: all 0.2s var(--transition-smooth);
 }
 
@@ -704,13 +708,13 @@
 .partner-summary-info h4 {
     font-size: 16px;
     font-weight: 700;
-    color: var(--text-main);
+    color: #0f172a;
     margin: 0 0 2px 0;
 }
 
 .partner-summary-info p {
     font-size: 14px;
-    color: var(--text-dim);
+    color: #64748b;
     margin: 0;
 }
 
@@ -799,14 +803,14 @@
 .event-ended-text h2 {
     font-size: 32px;
     font-weight: 800;
-    color: var(--text-main);
+    color: #0f172a;
     margin-bottom: 12px;
     line-height: 1.2;
 }
 
 .event-ended-text p {
     font-size: 16px;
-    color: var(--text-dim);
+    color: #475569;
     font-weight: 500;
     line-height: 1.5;
     margin: 0;

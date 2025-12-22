@@ -22,7 +22,23 @@ export function Login({ onLogin, onSwitchToRegister }: LoginProps) {
             const data = await authService.login(email, password);
             onLogin(data);
         } catch (err: any) {
-            setError(err.message);
+            // Provide more helpful error messages
+            let errorMessage = err.message || 'Login failed';
+            
+            // Check for network errors
+            if (err.message?.includes('Failed to fetch') || 
+                err.message?.includes('NetworkError') ||
+                err.message?.includes('Network request failed')) {
+                errorMessage = 'Unable to connect to server. Please check your network connection and ensure the server is running.';
+                
+                // If on mobile, provide additional guidance
+                if ((window as any).Capacitor) {
+                    errorMessage += ' If accessing via network, ensure you\'ve specified the server IP (e.g., ?host=192.168.1.208)';
+                }
+            }
+            
+            setError(errorMessage);
+            console.error('Login error:', err);
         } finally {
             setLoading(false);
         }

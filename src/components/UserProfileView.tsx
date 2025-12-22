@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { MapPin, ChevronLeft, Pause, Volume2, VolumeX, MessageCircle, MoreVertical, Flag, ChevronRight } from 'lucide-react';
+import { MapPin, ChevronLeft, Pause, Play, Volume2, VolumeX, MessageCircle, MoreVertical, Flag, ChevronRight } from 'lucide-react';
 import { authService } from '../services/authService';
 import { matchService } from '../services/api';
+import { getMediaBaseUrl } from '../services/apiConfig';
 import './Profile.css';
 
 interface UserProfileViewProps {
@@ -15,7 +15,7 @@ const MediaCard = ({ url, type }: { url: string; type: 'photo' | 'video' }) => {
     const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(true);
     const videoRef = useRef<HTMLVideoElement>(null);
-    const fullUrl = url.startsWith('http') ? url : `http://localhost:5001${url}`;
+    const fullUrl = url.startsWith('http') ? url : `${getMediaBaseUrl()}${url}`;
 
     const togglePlay = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -177,13 +177,13 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ userId, onBack
     const allMedia = [...videos, ...photos];
     const mediaTypes = [...videos.map(() => 'video' as const), ...photos.map(() => 'photo' as const)];
 
+    const fallbackImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'%3E%3Crect width='800' height='600' fill='%23f0f0f0'/%3E%3Ctext x='400' y='300' text-anchor='middle' dy='.3em' fill='%23666' font-family='Arial' font-size='24'%3ENo Image%3C/text%3E%3C/svg%3E";
+
     // If no media, ensure we have a valid fallback
     const getImageUrl = (url: string) => {
-        if (!url) return null;
-        return url.startsWith('http') ? url : `http://localhost:5001${url}`;
+        if (!url) return fallbackImage;
+        return url.startsWith('http') ? url : `${getMediaBaseUrl()}${url}`;
     };
-
-    const fallbackImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'%3E%3Crect width='800' height='600' fill='%23f0f0f0'/%3E%3Ctext x='400' y='300' text-anchor='middle' dy='.3em' fill='%23666' font-family='Arial' font-size='24'%3ENo Image%3C/text%3E%3C/svg%3E";
 
     const currentMediaItem = allMedia[activeImageIndex];
     const currentMediaType = mediaTypes[activeImageIndex];
@@ -267,12 +267,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ userId, onBack
 
     return (
         <div className="profile-wrapper dark-theme">
-            <motion.div
-                className="profile-container-new"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-            >
+            <div className="profile-container-new">
                 {/* Large Photo/Video Header */}
                 <header
                     className="profile-hero"
@@ -294,12 +289,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ userId, onBack
                                     <MoreVertical size={24} />
                                 </button>
                                 {showMenu && (
-                                    <motion.div
-                                        className="hero-menu-dropdown"
-                                        initial={{ opacity: 0, scale: 0.8, y: -10 }}
-                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                        exit={{ opacity: 0, scale: 0.8, y: -10 }}
-                                    >
+                                    <div className="hero-menu-dropdown">
                                         <button
                                             className="menu-item unmatch"
                                             onClick={() => {
@@ -320,7 +310,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ userId, onBack
                                             <Flag size={16} />
                                             Report
                                         </button>
-                                    </motion.div>
+                                    </div>
                                 )}
                             </div>
                         )}
@@ -457,19 +447,11 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ userId, onBack
                                 );
                             })}
 
-                            {/* Show placeholders if no media */}
+                            {/* Media count is now handled by the backend defaults if empty */}
                             {photos.length === 0 && videos.length === 0 && (
-                                <>
-                                    <div className="media-gallery-item">
-                                        <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&q=80" alt="Placeholder" />
-                                    </div>
-                                    <div className="media-gallery-item">
-                                        <img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&q=80" alt="Placeholder" />
-                                    </div>
-                                    <div className="media-gallery-item">
-                                        <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80" alt="Placeholder" />
-                                    </div>
-                                </>
+                                <div className="no-media-message">
+                                    <p>No photos uploaded yet</p>
+                                </div>
                             )}
                         </div>
                     </section>
@@ -477,17 +459,14 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ userId, onBack
 
                 {/* Floating Chat Icon for Matched Users */}
                 {matchStatus?.isMatched && onChat && (
-                    <motion.button
+                    <button
                         className="floating-chat-btn"
                         onClick={handleChat}
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        whileTap={{ scale: 0.9 }}
                     >
                         <MessageCircle size={24} />
-                    </motion.button>
+                    </button>
                 )}
-            </motion.div>
+            </div>
         </div>
     );
 };

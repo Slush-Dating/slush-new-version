@@ -107,6 +107,54 @@ This project is configured with Capacitor to deploy to iOS and Android app store
 3. Open native IDE and run on simulator/device
 4. Iterate: make changes → build → sync → test
 
+#### Network Access on Mobile (Troubleshooting)
+
+If you're unable to login when accessing the app via network on mobile, follow these steps:
+
+1. **Find your computer's IP address:**
+   ```bash
+   # macOS/Linux
+   ifconfig | grep "inet " | grep -v 127.0.0.1
+   
+   # Windows
+   ipconfig
+   ```
+   Look for an IP like `192.168.1.XXX` or `10.0.0.XXX`
+
+2. **Ensure your server is running and accessible:**
+   ```bash
+   cd server && npm start
+   ```
+   The server should be running on `0.0.0.0:5001` (accessible from network)
+
+3. **Set the server IP when accessing the app:**
+   - **Option A**: Add URL parameter when loading the app:
+     ```
+     http://YOUR_IP:5175/?host=YOUR_IP
+     ```
+     Example: `http://192.168.1.208:5175/?host=192.168.1.208`
+   
+   - **Option B**: Create a `.env` file in the project root:
+     ```
+     VITE_API_HOST=192.168.1.208
+     ```
+     (Replace with your actual IP)
+
+4. **Check the debug info:**
+   - When you open the login page, you'll see debug information showing the API URL being used
+   - Verify it shows `http://YOUR_IP:5001/api` (not localhost)
+
+5. **Common issues:**
+   - **Firewall blocking**: Ensure your firewall allows connections on port 5001
+   - **Wrong IP**: Make sure both devices (computer and mobile) are on the same network
+   - **Server not running**: Verify the server is running with `npm start` in the `server` directory
+   - **CORS errors**: The server is configured to allow all origins, but check browser console for errors
+
+6. **Verify connection:**
+   - Try accessing `http://YOUR_IP:5001/api/events` from your mobile browser
+   - You should see JSON data (or an empty array)
+   - If this works, the API is accessible and the issue is likely in the app configuration
+
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
@@ -183,3 +231,36 @@ node clear-matches.js
 
 Kill all servers:
 pkill -f node
+
+When ready for IPA
+1. Open Xcode on your Mac (not via SSH)
+2. Go to Xcode → Settings → Accounts tab
+3. Add your Apple ID: khalil.kirkwood@hotmail.co.uk
+4. Sign in with your Apple Developer password
+5. Once authenticated, Xcode will be able to create the necessary provisioning profiles
+
+db user:
+
+virtualspeeddate1_db_user
+NRvKXCsUqnbUKw4P
+
+
+## Deployment
+
+### Automated Deployment (CI/CD)
+
+Deployments are **fully automated** via GitHub Actions:
+
+- **Push to `develop`** → Auto-deploys to `staging.slushdating.com`
+- **Push to `main`** → Auto-deploys to `app.slushdating.com`
+
+See [GIT_WORKFLOW.md](./GIT_WORKFLOW.md) for complete workflow documentation.
+
+### Manual Deployment (Legacy)
+
+```bash
+npm run deploy:staging      # Deploy to staging (manual)
+npm run deploy:production   # Deploy to production (manual)
+```
+
+**Note**: Manual deployments require SSH access. Use automated GitHub Actions workflow for all regular deployments.

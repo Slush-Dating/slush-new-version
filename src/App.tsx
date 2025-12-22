@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { VideoFeed } from './components/VideoFeed';
 import { Profile } from './components/Profile';
@@ -13,11 +13,16 @@ import { Chat } from './components/Chat';
 import { Premium } from './components/Premium';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
+import { SplashScreen } from './components/SplashScreen';
+import { LandingPage } from './components/LandingPage';
 import { Onboarding } from './components/Onboarding';
 import { MatchOverlay } from './components/MatchOverlay';
 import { ChatList } from './components/ChatList';
+import { Notifications } from './components/Notifications';
+import { ToastNotification, type Toast } from './components/ToastNotification';
 import { chatService } from './services/api';
 import socketService from './services/socketService';
+import { getMediaBaseUrl } from './services/apiConfig';
 import { PlayCircle, User, Compass, Heart, MessageSquare } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import './App.css';
@@ -74,7 +79,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/app">
       <Routes>
         <Route path="/admin" element={<AdminPanel />} />
         <Route
@@ -98,17 +103,35 @@ function App() {
 }
 
 function AuthFlow({ onAuth }: { onAuth: (data: { token: string; user: any }) => void }) {
-  const [view, setView] = useState<'login' | 'register'>('login');
+  const [view, setView] = useState<'splash' | 'landing' | 'login' | 'register'>('splash');
+
+  const handleSplashComplete = () => {
+    setView('landing');
+  };
 
   return (
     <AnimatePresence mode="wait">
-      {view === 'login' ? (
+      {view === 'splash' && (
+        <SplashScreen
+          key="splash"
+          onComplete={handleSplashComplete}
+        />
+      )}
+      {view === 'landing' && (
+        <LandingPage
+          key="landing"
+          onCreateAccount={() => setView('register')}
+          onSignIn={() => setView('login')}
+        />
+      )}
+      {view === 'login' && (
         <Login
           key="login"
           onLogin={onAuth}
           onSwitchToRegister={() => setView('register')}
         />
-      ) : (
+      )}
+      {view === 'register' && (
         <Register
           key="register"
           onRegister={onAuth}
@@ -124,6 +147,7 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
   const [activeEvent, setActiveEvent] = useState<string | null>(null);
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [bookedEventId, setBookedEventId] = useState<string | null>(null);
+  const [eventPassword, setEventPassword] = useState<string>('');
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [showMatchOverlay, setShowMatchOverlay] = useState(false);
@@ -131,6 +155,49 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [chatListRefreshKey, setChatListRefreshKey] = useState(0);
+  const [newMatchCount, setNewMatchCount] = useState(0);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Use refs to access current tab/chat state in socket handlers without recreating listeners
+  const activeTabRef = useRef(activeTab);
+  const activeChatRef = useRef(activeChat);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
+
+  // Toast notification management
+  const addToast = useCallback((toast: Omit<Toast, 'id'>) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newToast: Toast = { ...toast, id };
+    setToasts(prev => [newToast, ...prev].slice(0, 3)); // Max 3 toasts
+
+    // Auto-dismiss after 4 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const handleToastAction = useCallback((toast: Toast) => {
+    dismissToast(toast.id);
+    if (toast.type === 'message' && toast.matchId) {
+      setActiveChat(toast.matchId);
+      setActiveTab('chat');
+    } else if (toast.type === 'match') {
+      setActiveTab('matches');
+      setNewMatchCount(0);
+    }
+  }, [dismissToast]);
 
   // Fetch unread message count
   const fetchUnreadCount = async () => {
@@ -147,7 +214,8 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
     fetchUnreadCount();
   }, []);
 
-  // Listen for new messages via socket to update badge in real-time
+  // Set up persistent socket connection and listeners once on mount
+  // This ensures real-time updates work regardless of which tab is active
   useEffect(() => {
     const getCurrentUserId = (): string | null => {
       const token = localStorage.getItem('token');
@@ -163,31 +231,112 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
     const currentUserId = getCurrentUserId();
     if (!currentUserId) return;
 
-    // Connect to socket if not already connected
+    let messageHandler: ((message: any) => void) | null = null;
+    let matchHandler: ((matchData: any) => void) | null = null;
+
+    // Connect to socket and set up persistent listeners
     const setupSocket = async () => {
       try {
+        console.log('🔌 Setting up persistent socket connection...');
         await socketService.connect(currentUserId);
+        console.log('✅ Socket connected successfully');
 
-        // Listen for new messages
-        const handleNewMessage = () => {
-          // If not currently viewing chat, increment unread count
-          if (activeTab !== 'chat' && !activeChat) {
-            setUnreadMessageCount(prev => prev + 1);
+        // Track processed message IDs to prevent duplicate updates from multiple rooms
+        const processedMessageIds = new Set<string>();
+
+        // Listen for new messages - update badge immediately and show toast
+        // This handler persists regardless of which tab is active
+        messageHandler = (message: any) => {
+          // Deduplicate: we may receive the same message from both match room and user room
+          const messageId = message._id;
+          if (processedMessageIds.has(messageId)) {
+            console.log('🔄 App: Skipping duplicate message:', messageId);
+            return;
+          }
+          processedMessageIds.add(messageId);
+
+          // Cleanup old IDs to prevent memory leak (keep last 100)
+          if (processedMessageIds.size > 100) {
+            const idsArray = Array.from(processedMessageIds);
+            idsArray.slice(0, 50).forEach(id => processedMessageIds.delete(id));
+          }
+
+          const senderId = typeof message.senderId === 'object'
+            ? message.senderId._id
+            : message.senderId;
+
+          // Only process if message is from someone else
+          if (senderId !== currentUserId) {
+            // Use refs to get current values without recreating listeners
+            const currentActiveChat = activeChatRef.current;
+            const currentActiveTab = activeTabRef.current;
+
+            // Update unread count immediately if not in that chat
+            // Only increment if not viewing the chat and not on chat tab
+            // (ChatList handles updates when on chat tab via onUnreadCountChange)
+            if (currentActiveChat !== message.matchId && currentActiveTab !== 'chat') {
+              console.log('📨 Incrementing unread count (not viewing chat, not on chat tab)');
+              setUnreadMessageCount(prev => prev + 1);
+            }
+
+            // Always show toast notification if not viewing that chat
+            if (currentActiveChat !== message.matchId) {
+              const senderName = message.senderId?.name || 'Someone';
+              const senderImage = message.senderId?.photos?.[0] || message.senderId?.imageUrl;
+              addToast({
+                type: 'message',
+                title: senderName,
+                message: message.content?.substring(0, 50) + (message.content?.length > 50 ? '...' : '') || 'New message',
+                imageUrl: senderImage,
+                matchId: message.matchId
+              });
+            }
           }
         };
 
-        socketService.onNewMessage(handleNewMessage);
+        // Listen for new matches - update badge immediately
+        matchHandler = (matchData: any) => {
+          console.log('🎉 App received new match via socket:', matchData);
+          setNewMatchCount(prev => prev + 1);
 
-        return () => {
-          socketService.off('new_message', handleNewMessage);
+          // Show toast notification
+          const matchUserName = matchData.user?.name || 'Someone';
+          const matchUserImage = matchData.user?.imageUrl || matchData.user?.photos?.[0];
+          addToast({
+            type: 'match',
+            title: matchUserName,
+            message: "It's a match! Start a conversation.",
+            imageUrl: matchUserImage,
+            matchId: matchData.matchId,
+            userId: matchData.user?._id?.toString() || matchData.user?.id
+          });
         };
+
+        // Set up listeners (these persist until component unmounts)
+        // Note: Socket.IO listeners persist across reconnections automatically
+        socketService.onNewMessage(messageHandler);
+        socketService.onNewMatch(matchHandler);
+        console.log('✅ Socket listeners set up - they will persist across reconnections');
+
       } catch (error) {
         console.error('Failed to connect socket for notifications:', error);
       }
     };
 
     setupSocket();
-  }, [activeTab, activeChat]);
+
+    // Cleanup: Remove listeners only when component unmounts (user logs out)
+    return () => {
+      console.log('🧹 Cleaning up socket listeners');
+      if (messageHandler) {
+        socketService.off('new_message', messageHandler);
+      }
+      if (matchHandler) {
+        socketService.off('new_match', matchHandler);
+      }
+    };
+  }, []); // Empty dependency array - set up once on mount
+
 
   // Refetch unread count when returning to chat list
   useEffect(() => {
@@ -227,7 +376,7 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
             || (matchData.user.photos && matchData.user.photos.length > 0
               ? (matchData.user.photos[0].startsWith('http')
                 ? matchData.user.photos[0]
-                : `http://localhost:5001${matchData.user.photos[0]}`)
+                : `${getMediaBaseUrl()}${matchData.user.photos[0]}`)
               : null),
           bio: matchData.user.bio || ''
         },
@@ -237,6 +386,17 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
 
       setCurrentMatchData(transformedMatchData);
       setShowMatchOverlay(true);
+
+      // Increment new match count and show toast
+      setNewMatchCount(prev => prev + 1);
+      addToast({
+        type: 'match',
+        title: transformedMatchData.user.name,
+        message: "It's a match! Start a conversation.",
+        imageUrl: transformedMatchData.user.imageUrl,
+        matchId: matchData.matchId,
+        userId: transformedMatchData.user.id
+      });
     } else {
       console.error('Invalid match data structure:', matchData);
     }
@@ -268,8 +428,9 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
     setViewingUserId(null); // Close profile view when opening chat
   };
 
-  const handleJoinEvent = (eventId: string) => {
+  const handleJoinEvent = (eventId: string, password?: string) => {
     setActiveEvent(eventId);
+    setEventPassword(password || '');
     setShowEventDetail(true);
   };
 
@@ -291,6 +452,11 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
 
   return (
     <div className="app-main">
+      <ToastNotification
+        toasts={toasts}
+        onDismiss={dismissToast}
+        onAction={handleToastAction}
+      />
       <main className="content-area">
         <AnimatePresence mode="wait">
           {viewingUserId ? (
@@ -305,18 +471,29 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
               {!activeEvent && !activeChat && activeTab === 'feed' && (
                 <VideoFeed
                   key="feed"
-                  onOpenProfile={() => setActiveTab('profile')}
+                  onOpenProfile={(userId: string) => setViewingUserId(userId)}
                   user={user}
                   onMatch={handleMatch}
                 />
               )}
-              {!activeEvent && !activeChat && activeTab === 'events' && (
+              {!activeEvent && !activeChat && activeTab === 'events' && !showNotifications && (
                 <Events
                   key="events"
                   onJoin={handleJoinEvent}
                   user={user}
                   bookedEventId={bookedEventId}
                   onJoinWaitingRoom={handleJoinWaitingRoom}
+                  onNotificationsClick={() => setShowNotifications(true)}
+                />
+              )}
+              {!activeEvent && !activeChat && activeTab === 'events' && showNotifications && (
+                <Notifications
+                  key="notifications"
+                  onBack={() => setShowNotifications(false)}
+                  onUpgrade={() => {
+                    setShowNotifications(false);
+                    setActiveTab('premium');
+                  }}
                 />
               )}
               {!activeEvent && !activeChat && activeTab === 'matches' && (
@@ -333,6 +510,10 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
                   key="chat-list"
                   onChat={(id) => setActiveChat(id)}
                   refreshKey={chatListRefreshKey}
+                  onUnreadCountChange={(change) => {
+                    console.log(`🔄 Global unread count change: ${change > 0 ? '+' : ''}${change}`);
+                    setUnreadMessageCount(prev => Math.max(0, prev + change));
+                  }}
                 />
               )}
               {!activeEvent && !activeChat && activeTab === 'profile' && <Profile key="profile" onLogout={onLogout} />}
@@ -360,6 +541,7 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
                     setActiveEvent(null);
                   }}
                   onBook={() => handleBookEvent(activeEvent)}
+                  password={eventPassword}
                 />
               )}
 
@@ -375,7 +557,7 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
                 />
               )}
 
-              {isSessionActive && (
+              {isSessionActive && activeEvent && (
                 <EventSession
                   key="session"
                   eventId={activeEvent}
@@ -433,9 +615,19 @@ function DatingApp({ user, onLogout }: { user: any; onLogout: () => void }) {
           </button>
           <button
             className={`nav-item ${activeTab === 'matches' ? 'active' : ''}`}
-            onClick={() => setActiveTab('matches')}
+            onClick={() => {
+              setActiveTab('matches');
+              setNewMatchCount(0);
+            }}
           >
-            <Heart size={24} />
+            <div className="nav-icon-wrapper">
+              <Heart size={24} />
+              {newMatchCount > 0 && (
+                <span className="notification-badge match-badge">
+                  {newMatchCount > 99 ? '99+' : newMatchCount}
+                </span>
+              )}
+            </div>
             <span>Matches</span>
           </button>
           <button

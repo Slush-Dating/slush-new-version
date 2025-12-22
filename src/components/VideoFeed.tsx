@@ -1,7 +1,18 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Heart, Star, X, MapPin, Loader2 } from 'lucide-react';
-import { matchService, discoveryService, type DiscoveryProfile } from '../services/api';
+import { matchService, discoveryService } from '../services/api';
+import { getMediaBaseUrl } from '../services/apiConfig';
 import './VideoFeed.css';
+
+// Use centralized API configuration for production support
+const API_BASE = getMediaBaseUrl();
+
+// Helper to construct full video URL
+const getFullUrl = (url: string | null | undefined): string => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    return `${API_BASE}${url}`;
+};
 
 interface Profile {
     id: string;
@@ -12,22 +23,93 @@ interface Profile {
     videoUrl: string | null;
     distance: string;
     thumbnail?: string | null;
+    duration?: number;
 }
 
 interface VideoFeedProps {
-    onOpenProfile: () => void;
+    onOpenProfile: (userId: string) => void;
     user?: any;
     onMatch?: (matchData: any) => void;
 }
 
-export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, user, onMatch }) => {
-    console.log('VideoFeed rendered with user:', user);
+// Video preload cache - stores actual video elements
+const videoPreloadCache = new Map<string, HTMLVideoElement>();
+
+// Preload a video fully in the background
+const preloadVideo = (url: string | null | undefined): Promise<HTMLVideoElement | null> => {
+    if (!url) return Promise.resolve(null);
+    if (videoPreloadCache.has(url)) return Promise.resolve(videoPreloadCache.get(url)!);
+
+    return new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.preload = 'auto'; // Load full video content
+        video.src = getFullUrl(url);
+        video.muted = true; // Required for autoplay
+        video.playsInline = true; // Better mobile support
+        video.loop = true;
+
+        video.oncanplaythrough = () => {
+            // Video is fully loaded and ready to play
+            videoPreloadCache.set(url, video);
+            resolve(video);
+        };
+
+        video.onloadeddata = () => {
+            // Fallback - at least metadata loaded
+            if (!videoPreloadCache.has(url)) {
+                videoPreloadCache.set(url, video);
+                resolve(video);
+            }
+        };
+
+        video.onerror = () => {
+            resolve(null); // Don't block on errors
+        };
+
+        // Set a timeout to prevent hanging
+        setTimeout(() => {
+            if (!videoPreloadCache.has(url)) {
+                videoPreloadCache.set(url, video);
+                resolve(video);
+            }
+        }, 10000); // 10 second timeout
+    });
+};
+
+export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, onMatch }) => {
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [loadedVideos, setLoadedVideos] = useState<Set<number>>(new Set());
+    const [displayIndex, setDisplayIndex] = useState(0); // What the user sees
     const [processingAction, setProcessingAction] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [slideDirection, setSlideDirection] = useState<'up' | 'down' | 'none'>('none');
+    const [isTransitioning, setIsTransitioning] = useState(false);
+
+    // Aggressively preload upcoming videos when current index changes
+    useEffect(() => {
+        const preloadUpcoming = async () => {
+            // Preload next 5 videos for smooth experience
+            for (let i = 1; i <= 5; i++) {
+                const nextIndex = (currentIndex + i) % profiles.length;
+                if (profiles[nextIndex]?.videoUrl) {
+                    preloadVideo(profiles[nextIndex].videoUrl!);
+                }
+            }
+
+            // Also preload previous 2 videos for backward navigation
+            for (let i = 1; i <= 2; i++) {
+                const prevIndex = currentIndex - i < 0 ? profiles.length + (currentIndex - i) : currentIndex - i;
+                if (profiles[prevIndex]?.videoUrl) {
+                    preloadVideo(profiles[prevIndex].videoUrl!);
+                }
+            }
+        };
+
+        if (profiles.length > 0) {
+            preloadUpcoming();
+        }
+    }, [currentIndex, profiles]);
 
     const handleAction = useCallback(async (profile: Profile, action: 'like' | 'pass' | 'super_like') => {
         if (processingAction || !profile.userId) {
@@ -49,7 +131,7 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, user, onMat
 
             // Remove profile from list after action
             setProfiles(prev => prev.filter(p => p.id !== profile.id));
-            
+
             // Adjust index if needed
             if (currentIndex >= profiles.length - 1) {
                 setCurrentIndex(0);
@@ -83,6 +165,36 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, user, onMat
                 }));
 
                 setProfiles(formattedProfiles);
+
+                // Preload first 3 videos immediately for instant playback
+                const preloadPromises = [];
+                for (let i = 0; i < Math.min(3, formattedProfiles.length); i++) {
+                    if (formattedProfiles[i].videoUrl) {
+                        preloadPromises.push(preloadVideo(formattedProfiles[i].videoUrl));
+                    }
+                }
+                // Don't wait for preloading to complete - let it happen in background
+
+                // Clean up old cached videos to prevent memory leaks
+                const cleanupCache = () => {
+                    const maxCacheSize = 10; // Keep max 10 videos in cache
+                    if (videoPreloadCache.size > maxCacheSize) {
+                        const cacheKeys = Array.from(videoPreloadCache.keys());
+                        // Remove videos that are far from current position
+                        const videosToRemove = cacheKeys.slice(0, cacheKeys.length - maxCacheSize);
+                        videosToRemove.forEach(key => {
+                            const video = videoPreloadCache.get(key);
+                            if (video) {
+                                video.removeAttribute('src');
+                                video.load(); // Reset video element
+                            }
+                            videoPreloadCache.delete(key);
+                        });
+                    }
+                };
+
+                // Clean up after preloading
+                Promise.all(preloadPromises).then(cleanupCache);
             } catch (err: any) {
                 console.error('Failed to fetch discovery feed:', err);
                 setError(err.message || 'Failed to load profiles');
@@ -95,22 +207,43 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, user, onMat
     }, []);
 
     const handleNext = useCallback(() => {
-        setCurrentIndex(prev => {
-            const next = prev + 1;
-            return next >= profiles.length ? 0 : next;
-        });
-    }, [profiles.length]);
+        if (isTransitioning) return;
+
+        const targetIndex = currentIndex + 1 >= profiles.length ? 0 : currentIndex + 1;
+        if (targetIndex === currentIndex) return; // Prevent infinite loops
+
+        setIsTransitioning(true);
+        setSlideDirection('up');
+
+        // Start animation - current video will animate out
+        setTimeout(() => {
+            // After animation completes, switch to new video
+            setDisplayIndex(targetIndex);
+            setCurrentIndex(targetIndex);
+            setSlideDirection('none');
+            setIsTransitioning(false);
+        }, 400);
+    }, [profiles.length, isTransitioning, currentIndex]);
 
     const handlePrev = useCallback(() => {
-        setCurrentIndex(prev => {
-            const prevIndex = prev - 1;
-            return prevIndex < 0 ? (profiles.length > 0 ? profiles.length - 1 : 0) : prevIndex;
-        });
-    }, [profiles.length]);
+        if (isTransitioning) return;
 
-    const handleVideoLoaded = useCallback((index: number) => {
-        setLoadedVideos(prev => new Set(prev).add(index));
-    }, []);
+        const targetIndex = currentIndex - 1 < 0 ? (profiles.length > 0 ? profiles.length - 1 : 0) : currentIndex - 1;
+        if (targetIndex === currentIndex) return; // Prevent infinite loops
+
+        setIsTransitioning(true);
+        setSlideDirection('down');
+
+        // Start animation - current video will animate out
+        setTimeout(() => {
+            // After animation completes, switch to new video
+            setDisplayIndex(targetIndex);
+            setCurrentIndex(targetIndex);
+            setSlideDirection('none');
+            setIsTransitioning(false);
+        }, 400);
+    }, [profiles.length, isTransitioning, currentIndex]);
+
 
     if (loading) {
         return (
@@ -145,26 +278,28 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, user, onMat
         );
     }
 
-    const currentProfile = profiles[currentIndex];
-    if (!currentProfile) {
+    const displayProfile = profiles[displayIndex];
+
+    if (!displayProfile) {
         return null;
     }
 
     return (
         <div className="video-feed-tiktok">
+            {/* Only one video visible at a time */}
             <VideoCardTikTok
-                key={currentProfile.id}
-                profile={currentProfile}
-                index={currentIndex}
+                key={`video-${displayProfile.id}`}
+                profile={displayProfile}
                 onSwipeUp={handleNext}
                 onSwipeDown={handlePrev}
-                onOpenProfile={onOpenProfile}
-                onVideoLoaded={handleVideoLoaded}
-                isLoaded={loadedVideos.has(currentIndex)}
+                onOpenProfile={() => onOpenProfile(displayProfile.userId)}
                 onLike={(profile) => handleAction(profile, 'like')}
                 onPass={(profile) => handleAction(profile, 'pass')}
                 onSuperLike={(profile) => handleAction(profile, 'super_like')}
                 processingAction={processingAction}
+                slideDirection={slideDirection}
+                isTransitioning={isTransitioning}
+                isVisible={true}
             />
         </div>
     );
@@ -172,30 +307,30 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, user, onMat
 
 interface VideoCardProps {
     profile: Profile;
-    index: number;
     onSwipeUp: () => void;
     onSwipeDown: () => void;
-    onOpenProfile: () => void;
-    onVideoLoaded: (index: number) => void;
-    isLoaded: boolean;
+    onOpenProfile: (userId: string) => void;
     onLike: (profile: Profile) => void;
     onPass: (profile: Profile) => void;
     onSuperLike: (profile: Profile) => void;
     processingAction: boolean;
+    slideDirection: 'up' | 'down' | 'none';
+    isTransitioning: boolean;
+    isVisible: boolean;
 }
 
-const VideoCardTikTok: React.FC<VideoCardProps> = ({ 
-    profile, 
-    index,
-    onSwipeUp, 
-    onSwipeDown, 
+const VideoCardTikTok: React.FC<VideoCardProps> = ({
+    profile,
+    onSwipeUp,
+    onSwipeDown,
     onOpenProfile,
-    onVideoLoaded,
-    isLoaded,
     onLike,
     onPass,
     onSuperLike,
-    processingAction
+    processingAction,
+    slideDirection,
+    isTransitioning,
+    isVisible
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -206,45 +341,108 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
     const [translateY, setTranslateY] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
 
+    // Determine animation class based on slide direction
+    const getAnimationClass = () => {
+        if (!isTransitioning) return '';
+        if (slideDirection === 'up') return 'slide-out-up';
+        if (slideDirection === 'down') return 'slide-out-down';
+        return '';
+    };
+
     // Minimum swipe distance (in pixels)
     const minSwipeDistance = 50;
+
+    // Memoize URLs for performance
+    const videoSrc = useMemo(() => getFullUrl(profile.videoUrl), [profile.videoUrl]);
+
+    // Ref callback to check video readiness immediately when element mounts
+    const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
+        if (node) {
+            videoRef.current = node;
+            // Immediately check if video is ready (might be cached or preloaded)
+            // Check synchronously first
+            if (node.readyState >= 2) {
+                setIsLoading(false);
+            }
+            // Also check in next frame to catch any immediate loads
+            requestAnimationFrame(() => {
+                if (node.readyState >= 2) {
+                    setIsLoading(false);
+                }
+            });
+        }
+    }, []);
 
     useEffect(() => {
         setIsLoading(true);
         setHasError(false);
         setTranslateY(0);
-        
-        if (videoRef.current) {
-            videoRef.current.load();
-            // Try to play, but don't treat autoplay blocking as an error
-            videoRef.current.play().catch(e => {
-                // Autoplay blocked is fine, video will play on user interaction
-                // Don't set error for autoplay blocking
-                if (e.name !== 'NotAllowedError' && e.name !== 'NotSupportedError') {
-                    console.log("Play failed", e);
-                    // Only set error if video hasn't loaded
-                    if (videoRef.current && videoRef.current.readyState < 2) {
-                        // Video hasn't loaded yet, wait for onError or onCanPlay
+
+        // Check if video is already preloaded
+        const preloadedVideo = videoPreloadCache.get(profile.videoUrl || '');
+        if (preloadedVideo && videoRef.current && preloadedVideo.readyState >= 3) {
+            // Use preloaded video - video is ready
+            videoRef.current.src = preloadedVideo.src;
+            setIsLoading(false);
+            setHasError(false);
+        } else {
+            // Video needs to load
+            if (videoRef.current) {
+                videoRef.current.load();
+                // Check immediately if video already has data (might be cached by browser)
+                const checkReady = () => {
+                    if (videoRef.current && videoRef.current.readyState >= 2) {
+                        setIsLoading(false);
                     }
-                }
-                // Don't set loading to false here - let onCanPlay or onError handle it
-            });
+                };
+                // Check synchronously first
+                checkReady();
+                // Then check in next frame
+                requestAnimationFrame(checkReady);
+            }
         }
-    }, [profile.id]);
+    }, [profile.id, profile.videoUrl]);
+
+    // Control video playback based on transition state
+    useEffect(() => {
+        if (videoRef.current) {
+            if (!isTransitioning) {
+                videoRef.current.play().catch(e => {
+                    // Autoplay blocked is fine
+                    if (e.name !== 'NotAllowedError' && e.name !== 'NotSupportedError') {
+                        console.log("Play error", e);
+                    }
+                });
+            } else {
+                videoRef.current.pause();
+            }
+        }
+    }, [isTransitioning]);
 
     const handleVideoCanPlay = () => {
         setIsLoading(false);
         setHasError(false);
-        onVideoLoaded(index);
-        // Try to play, but don't worry if autoplay is blocked
-        if (videoRef.current) {
+
+        // Only play if this video is currently visible and not during transition
+        if (videoRef.current && isVisible && !isTransitioning) {
             videoRef.current.play().catch(e => {
-                // Autoplay blocked is fine, don't show error
-                // Video will play on user interaction
                 if (e.name !== 'NotAllowedError' && e.name !== 'NotSupportedError') {
                     console.log("Play error", e);
                 }
             });
+        }
+    };
+
+    const handleVideoLoadStart = () => {
+        // Check if video is preloaded
+        const preloadedVideo = videoPreloadCache.get(profile.videoUrl || '');
+        if (preloadedVideo && preloadedVideo.readyState >= 3) { // HAVE_FUTURE_DATA or higher
+            setIsLoading(false);
+            setHasError(false);
+        }
+        // Also check current video element
+        if (videoRef.current && videoRef.current.readyState >= 2) {
+            setIsLoading(false);
         }
     };
 
@@ -253,6 +451,13 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
         // Only show error if video element actually has an error
         if (videoRef.current && videoRef.current.error) {
             setHasError(true);
+        }
+    };
+
+    const handleVideoLoadedMetadata = () => {
+        // Check if video has enough data to play
+        if (videoRef.current && videoRef.current.readyState >= 2) {
+            setIsLoading(false);
         }
     };
 
@@ -270,12 +475,15 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
 
     const handleTouchMove = (e: React.TouchEvent) => {
         if (touchStart === null) return;
-        
+
         const currentTouch = e.targetTouches[0].clientY;
         setTouchEnd(currentTouch);
         const diff = touchStart - currentTouch;
-        setTranslateY(-diff);
-        
+
+        // Add resistance effect when dragging beyond threshold
+        const resistance = Math.abs(diff) > 100 ? 0.5 : 1;
+        setTranslateY(-diff * resistance);
+
         // Pause video while dragging for better performance
         if (videoRef.current && Math.abs(diff) > 10) {
             videoRef.current.pause();
@@ -307,6 +515,7 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
             }
         }
 
+        // Smooth spring-back animation
         setTranslateY(0);
         setIsDragging(false);
         setTouchStart(null);
@@ -322,8 +531,11 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
         if (touchStart === null || !isDragging) return;
         const diff = touchStart - e.clientY;
         setTouchEnd(e.clientY);
-        setTranslateY(-diff);
-        
+
+        // Add resistance effect when dragging beyond threshold
+        const resistance = Math.abs(diff) > 100 ? 0.5 : 1;
+        setTranslateY(-diff * resistance);
+
         // Pause video while dragging for better performance
         if (videoRef.current && Math.abs(diff) > 10) {
             videoRef.current.pause();
@@ -355,6 +567,7 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
             }
         }
 
+        // Smooth spring-back animation
         setTranslateY(0);
         setIsDragging(false);
         setTouchStart(null);
@@ -383,10 +596,10 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
     };
 
     return (
-        <div 
+        <div
             ref={containerRef}
-            className={`video-card-tiktok ${isDragging ? 'dragging' : ''}`}
-            style={{ transform: `translateY(${translateY}px)` }}
+            className={`video-card-tiktok ${isDragging ? 'dragging' : ''} ${getAnimationClass()}`}
+            style={{ transform: isDragging ? `translateY(${translateY}px)` : undefined }}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -395,13 +608,14 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
         >
+
             {isLoading && !hasError && (
                 <div className="video-loading">
                     <Loader2 size={48} className="spinner" />
                     <p>Loading video...</p>
                 </div>
             )}
-            
+
             {hasError && videoRef.current?.error && (
                 <div className="video-error">
                     <p>Unable to load video</p>
@@ -416,13 +630,16 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
             )}
 
             <video
-                ref={videoRef}
-                src={profile.videoUrl || undefined}
+                ref={videoRefCallback}
+                src={videoSrc || undefined}
                 loop
                 muted
                 playsInline
+                preload="auto"
                 className="tiktok-video-element"
                 onCanPlay={handleVideoCanPlay}
+                onLoadStart={handleVideoLoadStart}
+                onLoadedMetadata={handleVideoLoadedMetadata}
                 onError={handleVideoError}
                 onLoadedData={handleVideoLoadedData}
             />
@@ -430,8 +647,8 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
             {/* Side Actions Overlay - TikTok Style */}
             <div className="tiktok-actions">
                 <div className="action-group">
-                    <div 
-                        className={`action-icon-wrapper ${processingAction ? 'disabled' : ''}`} 
+                    <div
+                        className={`action-icon-wrapper ${processingAction ? 'disabled' : ''}`}
                         onClick={handleLike}
                     >
                         <div className="icon-circle like-circle">
@@ -440,8 +657,8 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
                         <span>Like</span>
                     </div>
 
-                    <div 
-                        className={`action-icon-wrapper ${processingAction ? 'disabled' : ''}`} 
+                    <div
+                        className={`action-icon-wrapper ${processingAction ? 'disabled' : ''}`}
                         onClick={handleSuperLike}
                     >
                         <div className="icon-circle star-circle">
@@ -450,8 +667,8 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
                         <span>Super</span>
                     </div>
 
-                    <div 
-                        className={`action-icon-wrapper ${processingAction ? 'disabled' : ''}`} 
+                    <div
+                        className={`action-icon-wrapper ${processingAction ? 'disabled' : ''}`}
                         onClick={handlePass}
                     >
                         <div className="icon-circle pass-circle">
@@ -463,7 +680,7 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
             </div>
 
             {/* Bottom Info Overlay */}
-            <div className="tiktok-info-overlay" onClick={onOpenProfile}>
+            <div className="tiktok-info-overlay" onClick={() => onOpenProfile(profile.userId)}>
                 <div className="tiktok-user-info">
                     <h3>@{profile.name.toLowerCase()} <span className="user-age">{profile.age}</span></h3>
                     <div className="tiktok-distance">

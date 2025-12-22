@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authService } from '../services/authService';
+import { getMediaBaseUrl } from '../services/apiConfig';
 import { ChevronRight, ChevronLeft, Camera, Sparkles, Check } from 'lucide-react';
 import './Onboarding.css';
 
@@ -277,7 +278,7 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                             <div className="photo-grid">
                                 {formData.photos.map((photo, i) => (
                                     <div key={i} className="photo-slot has-content">
-                                        <img src={`http://localhost:5001${photo}`} alt={`Uploaded photo ${i + 1}`} />
+                                        <img src={`${getMediaBaseUrl()}${photo}`} alt={`Uploaded photo ${i + 1}`} />
                                         <button
                                             className="remove-media-btn"
                                             onClick={() => setFormData(prev => ({
@@ -313,7 +314,7 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                             <div className="photo-grid">
                                 {formData.videos.map((video, i) => (
                                     <div key={i} className="photo-slot has-content">
-                                        <video src={`http://localhost:5001${video}`} controls />
+                                        <video src={`${getMediaBaseUrl()}${video}`} controls />
                                         <button
                                             className="remove-media-btn"
                                             onClick={() => setFormData(prev => ({

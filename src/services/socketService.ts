@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { getSocketUrl } from './apiConfig';
 
 class SocketService {
     private socket: Socket | null = null;
@@ -6,54 +7,72 @@ class SocketService {
 
     connect(userId: string): Promise<Socket> {
         return new Promise((resolve, reject) => {
-            if (this.socket?.connected) {
-                // If already connected, check if authenticated
-                if (this.userId === userId) {
-                    resolve(this.socket);
-                    return;
-                } else {
-                    // Re-authenticate if userId changed
-                    this.socket.emit('authenticate', userId);
-                    this.socket.once('authenticated', () => {
-                        this.userId = userId;
-                        resolve(this.socket);
-                    });
-                    return;
-                }
+            // If we have a socket and it's connected and authenticated for the same user, reuse it
+            if (this.socket?.connected && this.userId === userId) {
+                console.log('✅ Socket already connected and authenticated, reusing connection');
+                resolve(this.socket!);
+                return;
+            }
+
+            // If socket exists but not connected, or different user, disconnect first
+            if (this.socket) {
+                console.log('🔄 Disconnecting existing socket before reconnecting');
+                this.socket.disconnect();
+                this.socket = null;
+                this.userId = null;
             }
 
             try {
                 this.userId = userId;
-                this.socket = io('http://localhost:5001', {
+                // Get socket URL using shared configuration
+                const socketUrl = getSocketUrl();
+                console.log('🔌 Connecting to socket:', socketUrl);
+                console.log('📍 Socket connection details:', {
+                    hostname: window.location.hostname,
+                    protocol: window.location.protocol,
+                    isMobile: !!(window as any).Capacitor,
+                    isDev: import.meta.env.DEV
+                });
+                this.socket = io(socketUrl, {
                     transports: ['websocket', 'polling'],
                     reconnection: true,
                     reconnectionDelay: 1000,
-                    reconnectionAttempts: 5
+                    reconnectionAttempts: 5,
+                    timeout: 20000
                 });
 
                 this.socket.on('connect', () => {
-                    console.log('Connected to chat server');
+                    console.log('✅ Connected to chat server');
                     // Authenticate with user ID
                     this.socket?.emit('authenticate', userId);
                 });
 
                 // Wait for authentication confirmation
                 this.socket.once('authenticated', () => {
-                    console.log('Socket authenticated successfully');
+                    console.log('✅ Socket authenticated successfully');
                     resolve(this.socket!);
                 });
 
                 this.socket.on('disconnect', () => {
-                    console.log('Disconnected from chat server');
+                    console.log('⚠️ Disconnected from chat server');
+                });
+
+                this.socket.on('reconnect', () => {
+                    console.log('🔄 Socket reconnected, re-authenticating...');
+                    // Re-authenticate on reconnect
+                    if (this.userId) {
+                        this.socket?.emit('authenticate', this.userId);
+                    }
                 });
 
                 this.socket.on('connect_error', (error) => {
-                    console.error('Socket connection error:', error);
-                    reject(error);
+                    console.error('❌ Socket connection error:', error);
+                    // Don't reject on connect_error - let reconnection handle it
+                    // reject(error);
                 });
 
                 this.socket.on('error', (error) => {
-                    console.error('Socket error:', error);
+                    console.error('❌ Socket error:', error);
                 });
             } catch (error) {
                 console.error('Failed to initialize socket:', error);
@@ -187,14 +206,88 @@ class SocketService {
         }
     }
 
+    onForceLogout(callback: (data: any) => void): void {
+        if (this.socket) {
+            this.socket.on('force_logout', callback);
+        }
+    }
+
+    offForceLogout(callback?: (data: any) => void): void {
+        if (this.socket) {
+            this.socket.off('force_logout', callback);
+        }
+    }
+
     onError(callback: (error: string) => void): void {
         if (this.socket) {
             this.socket.on('error', callback);
         }
     }
 
+    onNewMatch(callback: (matchData: any) => void): void {
+        if (this.socket) {
+            this.socket.on('new_match', callback);
+        }
+    }
+
+    // User status methods
+    getUserStatus(userId: string): void {
+        if (this.socket) {
+            this.socket.emit('get_user_status', userId);
+        }
+    }
+
+    onUserStatus(callback: (data: { userId: string; isOnline: boolean }) => void): void {
+        if (this.socket) {
+            this.socket.on('user_status', callback);
+        }
+    }
+
+    onUserStatusChange(callback: (data: { userId: string; isOnline: boolean }) => void): void {
+        if (this.socket) {
+            this.socket.on('user_status_change', callback);
+        }
+    }
+
+    // Waiting room / Event session methods
+    joinEventSession(eventId: string): void {
+        if (this.socket) {
+            this.socket.emit('join_event_session', eventId);
+        }
+    }
+
+    leaveEventSession(eventId: string): void {
+        if (this.socket) {
+            this.socket.emit('leave_event_session', eventId);
+        }
+    }
+
+    onUserJoinedSession(callback: (data: { userId: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('user_joined_session', callback);
+        }
+    }
+
+    onUserLeftSession(callback: (data: { userId: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('user_left_session', callback);
+        }
+    }
+
+    onParticipantCountUpdate(callback: (data: { count: number; eventId: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('participant_count_update', callback);
+        }
+    }
+
+    onPartnerFound(callback: (data: { partnerId: string; channelName: string; eventId: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('partner_found', callback);
+        }
+    }
+
     // Remove listeners
-    off(event: string, callback?: Function): void {
+    off(event: string, callback?: (...args: any[]) => void): void {
         if (this.socket) {
             if (callback) {
                 this.socket.off(event, callback);
@@ -204,9 +297,18 @@ class SocketService {
         }
     }
 
-    // Check if connected
+    // Check if connected and authenticated
     get isConnected(): boolean {
-        return this.socket?.connected || false;
+        return this.socket?.connected && this.userId !== null || false;
+    }
+
+    // Get connection status details
+    getConnectionStatus(): { connected: boolean; authenticated: boolean; userId: string | null } {
+        return {
+            connected: this.socket?.connected || false,
+            authenticated: this.userId !== null,
+            userId: this.userId
+        };
     }
 }
 

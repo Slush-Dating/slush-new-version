@@ -8,7 +8,7 @@
 
 .content-area {
     flex: 1;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 .bottom-nav {
@@ -112,4 +112,10 @@
     50% {
         transform: scale(1.1);
     }
+}
+
+/* Match notification badge - pink gradient */
+.notification-badge.match-badge {
+    background: linear-gradient(135deg, #FF4D6A 0%, #FF6B9D 100%);
+    box-shadow: 0 2px 8px rgba(255, 77, 106, 0.4);
 }

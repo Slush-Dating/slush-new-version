@@ -74,7 +74,6 @@ const matchSchema = new mongoose.Schema({
 });
 
 // Index for efficient queries
-matchSchema.index({ user1: 1, user2: 1 });
 matchSchema.index({ user1: 1, isMatch: 1 });
 matchSchema.index({ user2: 1, isMatch: 1 });
 matchSchema.index({ 'actions.fromUser': 1, 'actions.toUser': 1 });

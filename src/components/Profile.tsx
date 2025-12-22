@@ -1,19 +1,36 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, ChevronLeft, Play, Edit2, Pause, Volume2, VolumeX, Settings as SettingsIcon } from 'lucide-react';
+import { MapPin, Play, Edit2, Pause, Volume2, VolumeX, Settings as SettingsIcon, Star, StarOff } from 'lucide-react';
 import { Settings } from './Settings';
 import { authService } from '../services/authService';
+import { getApiBaseUrl } from '../services/apiConfig';
 import './Profile.css';
 
 interface ProfileProps {
     onLogout: () => void;
 }
 
-const MediaCard = ({ url, type }: { url: string; type: 'photo' | 'video' }) => {
+const MediaCard = ({ 
+    url, 
+    type, 
+    isProfilePhoto, 
+    onSetAsProfilePhoto 
+}: { 
+    url: string; 
+    type: 'photo' | 'video';
+    isProfilePhoto?: boolean;
+    onSetAsProfilePhoto?: () => void;
+}) => {
     const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(true);
     const videoRef = useRef<HTMLVideoElement>(null);
-    const fullUrl = url.startsWith('http') ? url : `http://localhost:5001${url}`;
+    const getImageUrl = (imageUrl: string) => {
+        if (!imageUrl) return '';
+        if (imageUrl.startsWith('http')) return imageUrl;
+        const apiBaseUrl = getApiBaseUrl();
+        const serverBaseUrl = apiBaseUrl.replace('/api', '');
+        return `${serverBaseUrl}${imageUrl}`;
+    };
+    const fullUrl = getImageUrl(url);
 
     const togglePlay = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -27,6 +44,13 @@ const MediaCard = ({ url, type }: { url: string; type: 'photo' | 'video' }) => {
     const toggleMute = (e: React.MouseEvent) => {
         e.stopPropagation();
         setIsMuted(!isMuted);
+    };
+
+    const handleSetAsProfilePhoto = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onSetAsProfilePhoto && type === 'photo') {
+            onSetAsProfilePhoto();
+        }
     };
 
     if (type === 'video') {
@@ -56,6 +80,26 @@ const MediaCard = ({ url, type }: { url: string; type: 'photo' | 'video' }) => {
     return (
         <div className="profile-media-card photo">
             <img src={fullUrl} alt="Profile media" />
+            {type === 'photo' && (
+                <div className="photo-actions">
+                    {isProfilePhoto ? (
+                        <div className="profile-photo-badge" title="Current profile photo">
+                            <Star size={16} fill="currentColor" />
+                        </div>
+                    ) : (
+                        onSetAsProfilePhoto && (
+                            <button 
+                                className="set-profile-photo-btn" 
+                                onClick={handleSetAsProfilePhoto}
+                                title="Set as profile photo"
+                                aria-label="Set as profile photo"
+                            >
+                                <StarOff size={16} />
+                            </button>
+                        )
+                    )}
+                </div>
+            )}
         </div>
     );
 };
@@ -118,6 +162,11 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
     const videos = user.videos || [];
     const interests = user.interests || [];
 
+    // Combine all media for hero carousel (videos first, then photos)
+    const allHeroMedia = [...videos, ...photos];
+    const currentHeroMedia = allHeroMedia[activeImageIndex];
+    const isCurrentHeroVideo = currentHeroMedia && videos.includes(currentHeroMedia);
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
@@ -155,7 +204,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         if (index < currentPhotos.length) {
             // Remove from existing photos
             currentPhotos.splice(index, 1);
-            setUser({...user, photos: currentPhotos});
+            setUser({ ...user, photos: currentPhotos });
         } else {
             // Remove from uploaded photos
             const uploadedIndex = index - currentPhotos.length;
@@ -171,12 +220,44 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         if (index < currentVideos.length) {
             // Remove from existing videos
             currentVideos.splice(index, 1);
-            setUser({...user, videos: currentVideos});
+            setUser({ ...user, videos: currentVideos });
         } else {
             // Remove from uploaded videos
             const uploadedIndex = index - currentVideos.length;
             uploadedVideosList.splice(uploadedIndex, 1);
             setUploadedVideos(uploadedVideosList);
+        }
+    };
+
+    const setAsProfilePhoto = async (photoIndex: number) => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setError('Authentication required');
+                return;
+            }
+
+            // Create a new photos array with the selected photo moved to the first position
+            const currentPhotos = [...photos];
+            const selectedPhoto = currentPhotos[photoIndex];
+            
+            // Remove the photo from its current position
+            currentPhotos.splice(photoIndex, 1);
+            // Add it to the beginning
+            const reorderedPhotos = [selectedPhoto, ...currentPhotos];
+
+            // Update backend
+            await authService.updateOnboarding(token, { photos: reorderedPhotos });
+
+            // Update local state
+            setUser({ ...user, photos: reorderedPhotos });
+            
+            // Also update activeImageIndex if needed (if we're viewing the hero image)
+            if (activeImageIndex === photoIndex + videos.length) {
+                setActiveImageIndex(videos.length); // First photo is now at videos.length index
+            }
+        } catch (err: any) {
+            setError(err.message || 'Failed to set profile photo');
         }
     };
 
@@ -214,7 +295,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
             await authService.updateOnboarding(token, updates);
 
             // Update local user state
-            setUser({...user, ...updates});
+            setUser({ ...user, ...updates });
             setIsEditMode(false);
             setUploadedPhotos([]);
             setUploadedVideos([]);
@@ -227,33 +308,63 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
     return (
         <div className="profile-wrapper dark-theme">
-            <AnimatePresence mode="wait">
-                {!showSettings ? (
-                    <motion.div
-                        key="profile-main"
-                        className="profile-container-new"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                    >
-                        {/* 1. Large Photo Header */}
-                        <header className="profile-hero">
-                            <div className="hero-overlay-gradient" />
-                            <div className="hero-overlay-top">
-                                <button className="hero-btn back-btn"><ChevronLeft size={24} /></button>
-                                <button className="hero-btn settings-btn" onClick={() => setShowSettings(true)}>
-                                    <SettingsIcon size={20} />
-                                </button>
-                            </div>
+            {/* Animated background orbs */}
+            <div className="profile-orbs">
+                <div className="profile-orb profile-orb-1" />
+                <div className="profile-orb profile-orb-2" />
+                <div className="profile-orb profile-orb-3" />
+            </div>
+            {!showSettings ? (
+                <div className="profile-container-new profile-page-enter">
+                            {/* 1. Large Photo/Video Header */}
+                            <header className="profile-hero">
+                                <div className="hero-overlay-gradient" />
+                                <div className="hero-overlay-top">
+                                    <button className="hero-btn settings-btn" onClick={() => setShowSettings(true)}>
+                                        <SettingsIcon size={20} />
+                                    </button>
+                                </div>
 
-                            <img
-                                src={photos[activeImageIndex] ? `http://localhost:5001${photos[activeImageIndex]}` : "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&q=80"}
-                                alt="Profile Hero"
-                                className="hero-image"
-                            />
+                            {/* Show video or image based on current media */}
+                            {currentHeroMedia ? (
+                                isCurrentHeroVideo ? (
+                                    <video
+                                        src={(() => {
+                                            if (currentHeroMedia.startsWith('http')) return currentHeroMedia;
+                                            const apiBaseUrl = getApiBaseUrl();
+                                            const serverBaseUrl = apiBaseUrl.replace('/api', '');
+                                            return `${serverBaseUrl}${currentHeroMedia}`;
+                                        })()}
+                                        className="hero-image"
+                                        autoPlay
+                                        loop
+                                        muted
+                                        playsInline
+                                    />
+                                ) : (
+                                    <img
+                                        src={(() => {
+                                            if (currentHeroMedia.startsWith('http')) return currentHeroMedia;
+                                            const apiBaseUrl = getApiBaseUrl();
+                                            const serverBaseUrl = apiBaseUrl.replace('/api', '');
+                                            return `${serverBaseUrl}${currentHeroMedia}`;
+                                        })()}
+                                        alt="Profile media"
+                                        className="hero-image"
+                                    />
+                                )
+                            ) : (
+                                <div className="hero-placeholder">
+                                    <img
+                                        src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&q=80"
+                                        alt="Profile placeholder"
+                                        className="hero-image"
+                                    />
+                                </div>
+                            )}
 
                             <div className="hero-pagination">
-                                {Array.from({ length: Math.max(1, photos.length) }).map((_, i) => (
+                                {Array.from({ length: Math.max(1, allHeroMedia.length) }).map((_, i) => (
                                     <span
                                         key={i}
                                         className={`dot ${i === activeImageIndex ? 'active' : ''}`}
@@ -287,7 +398,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                                             type="text"
                                             className="edit-input"
                                             value={editForm.name}
-                                            onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                                             placeholder="Enter your name"
                                         />
                                     </section>
@@ -298,7 +409,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                                         <textarea
                                             className="edit-textarea"
                                             value={editForm.bio}
-                                            onChange={(e) => setEditForm({...editForm, bio: e.target.value})}
+                                            onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })}
                                             placeholder="Tell others about yourself..."
                                             rows={4}
                                         />
@@ -366,32 +477,46 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                                             <div className="current-media-preview">
                                                 <h5 className="media-preview-title">Current Photos</h5>
                                                 <div className="media-preview-grid">
-                                                    {[...photos, ...uploadedPhotos].map((photo, index) => (
-                                                        <div key={`photo-${index}`} className="media-preview-item">
-                                                            <img src={`http://localhost:5001${photo}`} alt="Profile photo" />
-                                                            <button
-                                                                className="remove-media-btn"
-                                                                onClick={() => removePhoto(index)}
-                                                            >
-                                                                ×
-                                                            </button>
-                                                        </div>
-                                                    ))}
+                                                    {[...photos, ...uploadedPhotos].map((photo, index) => {
+                                                        const photoUrl = photo.startsWith('http') ? photo : (() => {
+                                                            const apiBaseUrl = getApiBaseUrl();
+                                                            const serverBaseUrl = apiBaseUrl.replace('/api', '');
+                                                            return `${serverBaseUrl}${photo}`;
+                                                        })();
+                                                        return (
+                                                            <div key={`photo-${index}`} className="media-preview-item">
+                                                                <img src={photoUrl} alt="Profile photo" />
+                                                                <button
+                                                                    className="remove-media-btn"
+                                                                    onClick={() => removePhoto(index)}
+                                                                >
+                                                                    ×
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
 
                                                 <h5 className="media-preview-title">Current Videos</h5>
                                                 <div className="media-preview-grid">
-                                                    {[...videos, ...uploadedVideos].map((video, index) => (
-                                                        <div key={`video-${index}`} className="media-preview-item">
-                                                            <video src={`http://localhost:5001${video}`} />
-                                                            <button
-                                                                className="remove-media-btn"
-                                                                onClick={() => removeVideo(index)}
-                                                            >
-                                                                ×
-                                                            </button>
-                                                        </div>
-                                                    ))}
+                                                    {[...videos, ...uploadedVideos].map((video, index) => {
+                                                        const videoUrl = video.startsWith('http') ? video : (() => {
+                                                            const apiBaseUrl = getApiBaseUrl();
+                                                            const serverBaseUrl = apiBaseUrl.replace('/api', '');
+                                                            return `${serverBaseUrl}${video}`;
+                                                        })();
+                                                        return (
+                                                            <div key={`video-${index}`} className="media-preview-item">
+                                                                <video src={videoUrl} />
+                                                                <button
+                                                                    className="remove-media-btn"
+                                                                    onClick={() => removeVideo(index)}
+                                                                >
+                                                                    ×
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         </div>
@@ -478,48 +603,37 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                                         <h4 className="section-label">Gallery</h4>
                                         <div className="media-gallery-grid">
                                             {/* All photos and videos in one responsive grid */}
-                                            {[...photos, ...videos].map((media, index) => {
+                                            {[...videos, ...photos].map((media, index) => {
                                                 const isVideo = videos.includes(media);
+                                                const photoIndex = index - videos.length;
+                                                const isProfilePhoto = !isVideo && photoIndex === 0;
                                                 return (
                                                     <div key={index} className="media-gallery-item">
-                                                        <MediaCard url={media} type={isVideo ? "video" : "photo"} />
+                                                        <MediaCard 
+                                                            url={media} 
+                                                            type={isVideo ? "video" : "photo"}
+                                                            isProfilePhoto={isProfilePhoto}
+                                                            onSetAsProfilePhoto={!isVideo ? () => setAsProfilePhoto(photoIndex) : undefined}
+                                                        />
                                                     </div>
                                                 );
                                             })}
 
-                                            {/* Show placeholders if no media */}
+                                            {/* Media count is now handled by the backend defaults if empty */}
                                             {photos.length === 0 && videos.length === 0 && (
-                                                <>
-                                                    <div className="media-gallery-item">
-                                                        <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&q=80" alt="Placeholder" />
-                                                    </div>
-                                                    <div className="media-gallery-item">
-                                                        <img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&q=80" alt="Placeholder" />
-                                                    </div>
-                                                    <div className="media-gallery-item">
-                                                        <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80" alt="Placeholder" />
-                                                    </div>
-                                                    <div className="media-gallery-item">
-                                                        <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80" alt="Placeholder" />
-                                                    </div>
-                                                    <div className="media-gallery-item">
-                                                        <img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&q=80" alt="Placeholder" />
-                                                    </div>
-                                                    <div className="media-gallery-item">
-                                                        <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&q=80" alt="Placeholder" />
-                                                    </div>
-                                                </>
+                                                <div className="no-media-message">
+                                                    <p>Upload photos to your gallery</p>
+                                                </div>
                                             )}
                                         </div>
                                     </section>
                                 </>
                             )}
                         </main>
-                    </motion.div>
+                    </div>
                 ) : (
-                    <Settings key="profile-settings" onBack={() => setShowSettings(false)} onLogout={onLogout} />
+                    <Settings onBack={() => setShowSettings(false)} onLogout={onLogout} />
                 )}
-            </AnimatePresence>
         </div>
     );
 };

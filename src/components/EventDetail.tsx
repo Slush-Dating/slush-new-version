@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Bookmark, Calendar, MapPin, Clock, Users, Loader2 } from 'lucide-react';
+import { ArrowLeft, Bookmark, Calendar, MapPin, Loader2 } from 'lucide-react';
 import { eventService, type EventData } from '../services/api';
 import './EventDetail.css';
 
@@ -7,15 +7,18 @@ interface EventDetailProps {
     eventId: string;
     onBack: () => void;
     onBook: () => void;
+    password?: string;
 }
 
 // Participants will be fetched from the API when event booking is implemented
 
-export const EventDetail: React.FC<EventDetailProps> = ({ eventId, onBack, onBook }) => {
+export const EventDetail: React.FC<EventDetailProps> = ({ eventId, onBack, onBook, password }) => {
     const [event, setEvent] = useState<EventData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isBookmarked, setIsBookmarked] = useState(false);
+    const [booking, setBooking] = useState(false);
+    const [isBooked, setIsBooked] = useState(false);
 
     useEffect(() => {
         const fetchEvent = async () => {
@@ -31,7 +34,37 @@ export const EventDetail: React.FC<EventDetailProps> = ({ eventId, onBack, onBoo
             }
         };
 
+        const fetchBookingStatus = async () => {
+            // Only check booking status if user is authenticated
+            const token = localStorage.getItem('token');
+            if (!token) {
+                // User is not logged in, so they're not booked
+                setIsBooked(false);
+                return;
+            }
+
+            try {
+                const status = await eventService.getBookingStatus(eventId);
+                setIsBooked(status.isBooked);
+            } catch (err: any) {
+                console.error('Failed to fetch booking status:', err);
+                // If authentication fails, clear invalid token locally
+                if (err.message?.includes('Invalid token') || err.message?.includes('Not authenticated')) {
+                    console.warn('Authentication token invalid, clearing stored credentials');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    setIsBooked(false);
+                    // Show error message
+                    setError('Your session has expired. Please refresh the page and log in again.');
+                } else {
+                    // For other errors, assume not booked
+                    setIsBooked(false);
+                }
+            }
+        };
+
         fetchEvent();
+        fetchBookingStatus();
     }, [eventId]);
 
     const formatDate = (dateString: string) => {
@@ -76,19 +109,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ eventId, onBack, onBoo
             {/* Header with Image */}
             <div className="event-detail-header">
                 <div className="event-header-image">
-                    <img 
-                        src={event.imageUrl || '/default-event.png'} 
+                    <img
+                        src={event.imageUrl || '/default-event.png'}
                         alt={event.name}
                     />
                     <div className="event-header-overlay"></div>
                 </div>
-                
+
                 {/* Top Navigation */}
                 <div className="event-detail-nav">
                     <button className="nav-back-btn" onClick={onBack}>
                         <ArrowLeft size={24} />
                     </button>
-                    <button 
+                    <button
                         className={`nav-bookmark-btn ${isBookmarked ? 'bookmarked' : ''}`}
                         onClick={() => setIsBookmarked(!isBookmarked)}
                     >
@@ -125,8 +158,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({ eventId, onBack, onBoo
                 <section className="event-detail-section">
                     <h2 className="section-heading">About Event</h2>
                     <p className="section-description">
-                        You will virtually meet up to 10 different people. Each date will last 3 minutes and you will have an opportunity to decide whether or not you like the person. If you both like each other, you will match at the end of the session and can continue your conversation. Most importantly, have fun!
+                        {event.description || 'You will virtually meet up to 10 different people. Each date will last 3 minutes and you will have an opportunity to decide whether or not you like the person. If you both like each other, you will match at the end of the session and can continue your conversation. Most importantly, have fun!'}
                     </p>
+                    <div style={{ marginTop: '16px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <span className="event-tag" style={{ padding: '6px 12px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.15)', color: '#1d4ed8', fontSize: '13px', fontWeight: 600 }}>
+                            {event.eventType || 'Straight'} Event
+                        </span>
+                        <span className="event-tag" style={{ padding: '6px 12px', borderRadius: '8px', background: 'rgba(34, 197, 94, 0.15)', color: '#15803d', fontSize: '13px', fontWeight: 600 }}>
+                            {(event.maxMaleParticipants || 10) - (event.maleCount || 0)} male slots
+                        </span>
+                        <span className="event-tag" style={{ padding: '6px 12px', borderRadius: '8px', background: 'rgba(236, 72, 153, 0.15)', color: '#be185d', fontSize: '13px', fontWeight: 600 }}>
+                            {(event.maxFemaleParticipants || 10) - (event.femaleCount || 0)} female slots
+                        </span>
+                    </div>
                 </section>
 
                 {/* Event Participants Section */}
@@ -146,8 +190,24 @@ export const EventDetail: React.FC<EventDetailProps> = ({ eventId, onBack, onBoo
                     <span className="footer-price">Free</span>
                     <span className="footer-subtitle">Join our free event</span>
                 </div>
-                <button className="footer-book-btn vibrant-btn" onClick={onBook}>
-                    Book now
+                <button
+                    className={`footer-book-btn ${isBooked ? 'booked-btn' : 'vibrant-btn'}`}
+                    onClick={async () => {
+                        if (booking || isBooked) return;
+                        setBooking(true);
+                        try {
+                            await eventService.bookEvent(eventId, password);
+                            setIsBooked(true);
+                            onBook();
+                        } catch (err: any) {
+                            alert(err.message || 'Failed to book event');
+                        } finally {
+                            setBooking(false);
+                        }
+                    }}
+                    disabled={booking || isBooked}
+                >
+                    {booking ? 'Booking...' : isBooked ? 'Booked' : 'Book now'}
                 </button>
             </div>
         </div>

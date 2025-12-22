@@ -63,3 +63,9 @@ async function verifyLocations() {
 
 verifyLocations();
 
+
+
+
+
+
+

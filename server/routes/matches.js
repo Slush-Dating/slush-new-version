@@ -4,9 +4,17 @@ import jwt from 'jsonwebtoken';
 import Match from '../models/Match.js';
 import User from '../models/User.js';
 import Message from '../models/Message.js';
+import Notification from '../models/Notification.js';
+import Report from '../models/Report.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+// Import io instance - will be set by server/index.js
+let io = null;
+export const setSocketIO = (socketIO) => {
+    io = socketIO;
+};
 
 // Middleware to verify authentication
 const authenticate = (req, res, next) => {
@@ -107,6 +115,35 @@ router.post('/action', authenticate, async (req, res) => {
         const isNewMatch = match.checkAndCreateMatch();
         await match.save();
 
+        // Create notification for likes (if action is like/super_like and not a match yet)
+        if ((action === 'like' || action === 'super_like') && !isNewMatch) {
+            try {
+                const likeNotification = new Notification({
+                    userId: toUserId,
+                    type: 'like',
+                    fromUserId: fromUserId,
+                    title: `${fromUser.name} has liked you`,
+                    description: action === 'super_like' ? 'Super Like!' : null
+                });
+                await likeNotification.save();
+
+                // Emit socket event for real-time notification
+                if (io) {
+                    io.to(`user_${toUserId}`).emit('new_notification', {
+                        type: 'like',
+                        notification: {
+                            id: likeNotification._id.toString(),
+                            type: 'like',
+                            title: 'Someone liked you!', // Always send generic for socket (premium check on fetch)
+                            timestamp: 'Just now'
+                        }
+                    });
+                }
+            } catch (notifErr) {
+                console.error('Failed to create like notification:', notifErr);
+            }
+        }
+
         // If it's a new match, populate user details for response
         let matchData = null;
         if (isNewMatch && !wasMatch) {
@@ -122,6 +159,80 @@ router.post('/action', authenticate, async (req, res) => {
                 matchedAt: match.matchedAt,
                 context: match.matchContext
             };
+
+            // Emit socket event only to the other user (not the initiator, who already knows from API response)
+            if (io) {
+                const otherUserId = match.user1._id.toString() === fromUserId.toString()
+                    ? match.user2._id.toString()
+                    : match.user1._id.toString();
+
+                // Emit only to the other user's room
+                io.to(`user_${otherUserId}`).emit('new_match', {
+                    matchId: match._id,
+                    user: match.user1._id.toString() === otherUserId.toString()
+                        ? match.user2
+                        : match.user1,
+                    matchedAt: match.matchedAt,
+                    context: match.matchContext
+                });
+                console.log(`Emitted new_match event to user ${otherUserId} (not to initiator ${fromUserId})`);
+            }
+
+            // Create match notifications for both users
+            try {
+                const user1Id = match.user1._id.toString();
+                const user2Id = match.user2._id.toString();
+
+                // Notification for user1
+                const notification1 = new Notification({
+                    userId: user1Id,
+                    type: 'match',
+                    fromUserId: user2Id,
+                    title: `You matched with ${match.user2.name}`,
+                    description: "It's a match!",
+                    matchId: match._id
+                });
+                await notification1.save();
+
+                // Notification for user2
+                const notification2 = new Notification({
+                    userId: user2Id,
+                    type: 'match',
+                    fromUserId: user1Id,
+                    title: `You matched with ${match.user1.name}`,
+                    description: "It's a match!",
+                    matchId: match._id
+                });
+                await notification2.save();
+
+                // Emit socket events for match notifications
+                if (io) {
+                    io.to(`user_${user1Id}`).emit('new_notification', {
+                        type: 'match',
+                        notification: {
+                            id: notification1._id.toString(),
+                            type: 'match',
+                            title: `You matched with ${match.user2.name}`,
+                            description: "It's a match!",
+                            matchId: match._id.toString(),
+                            timestamp: 'Just now'
+                        }
+                    });
+                    io.to(`user_${user2Id}`).emit('new_notification', {
+                        type: 'match',
+                        notification: {
+                            id: notification2._id.toString(),
+                            type: 'match',
+                            title: `You matched with ${match.user1.name}`,
+                            description: "It's a match!",
+                            matchId: match._id.toString(),
+                            timestamp: 'Just now'
+                        }
+                    });
+                }
+            } catch (notifErr) {
+                console.error('Failed to create match notifications:', notifErr);
+            }
         }
 
         res.json({
@@ -434,7 +545,7 @@ router.post('/unmatch/:userId', authenticate, async (req, res) => {
 router.post('/report/:userId', authenticate, async (req, res) => {
     try {
         const { userId: targetUserId } = req.params;
-        const { reason } = req.body;
+        const { reason, description, context = 'profile', referenceId } = req.body;
         const currentUserId = req.userId;
 
         if (currentUserId === targetUserId) {
@@ -447,11 +558,36 @@ router.post('/report/:userId', authenticate, async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Here you could save the report to a reports collection
-        // For now, we'll just log it and return success
+        // Check if user has already reported this person recently (prevent spam)
+        const existingReport = await Report.findOne({
+            reporterId: currentUserId,
+            reportedUserId: targetUserId,
+            createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Within last 24 hours
+        });
+
+        if (existingReport) {
+            return res.status(400).json({ message: 'You have already reported this user recently' });
+        }
+
+        // Create the report
+        const report = new Report({
+            reporterId: currentUserId,
+            reportedUserId: targetUserId,
+            reason,
+            description: description || '',
+            context,
+            referenceId
+        });
+
+        await report.save();
+
         console.log(`User ${currentUserId} reported user ${targetUserId} for reason: ${reason}`);
 
-        res.json({ success: true, message: 'Report submitted successfully' });
+        res.json({
+            success: true,
+            message: 'Report submitted successfully',
+            reportId: report._id
+        });
     } catch (err) {
         console.error('Report error:', err);
         res.status(500).json({ message: 'Server error', error: err.message });

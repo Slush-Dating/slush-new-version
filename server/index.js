@@ -1,34 +1,73 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import eventRoutes from './routes/events.js';
 import authRoutes from './routes/auth.js';
-import matchRoutes from './routes/matches.js';
+import matchRoutes, { setSocketIO } from './routes/matches.js';
 import seedRoutes from './routes/seed.js';
 import discoveryRoutes from './routes/discovery.js';
 import chatRoutes from './routes/chat.js';
+import agoraRoutes from './routes/agora.js';
+import notificationRoutes from './routes/notifications.js';
+import adminRoutes from './routes/admin.js';
 import Message from './models/Message.js';
 import Match from './models/Match.js';
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 const server = createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:5173", "http://localhost:5175", "http://localhost:5177"],
-        methods: ["GET", "POST"]
+        origin: "*", // Allow ALL origins
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        credentials: false
     }
 });
 
-// Middleware
-app.use(cors());
+// In-memory store for tracking online users
+const onlineUsers = new Map(); // userId -> socket.id
+
+// Helper function to get user's matches for status broadcasting
+async function getUserMatches(userId) {
+    try {
+        const matches = await Match.find({
+            $or: [{ user1: userId }, { user2: userId }],
+            isMatch: true
+        });
+        return matches.map(match => {
+            const user1Str = match.user1.toString();
+            const user2Str = match.user2.toString();
+            return user1Str === userId.toString() ? match.user2.toString() : match.user1.toString();
+        });
+    } catch (error) {
+        console.error('Error fetching user matches:', error);
+        return [];
+    }
+}
+
+// Completely permissive CORS - allow everything for easy access
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', '*');
+    res.header('Access-Control-Allow-Credentials', 'false');
+
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(200);
+        return;
+    }
+
+    next();
+});
+
 app.use(express.json());
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,7 +79,7 @@ io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
     // Authenticate user on connection
-    socket.on('authenticate', (userId) => {
+    socket.on('authenticate', async (userId) => {
         if (!userId) {
             console.error('Authentication failed: No userId provided');
             socket.emit('error', 'Authentication failed: No userId provided');
@@ -48,9 +87,32 @@ io.on('connection', (socket) => {
         }
         socket.userId = userId.toString();
         socket.join(`user_${userId}`);
-        console.log(`User ${userId} authenticated and joined room user_${userId}`);
+
+        // Mark user as online
+        onlineUsers.set(socket.userId, socket.id);
+        console.log(`User ${userId} authenticated and joined room user_${userId} (online users: ${onlineUsers.size})`);
+
         // Emit confirmation
         socket.emit('authenticated', { userId: socket.userId });
+
+        // Broadcast online status to all matched users
+        const matchedUsers = await getUserMatches(socket.userId);
+        matchedUsers.forEach(matchedUserId => {
+            io.to(`user_${matchedUserId}`).emit('user_status_change', {
+                userId: socket.userId,
+                isOnline: true
+            });
+        });
+        console.log(`Broadcasted online status to ${matchedUsers.length} matched users`);
+    });
+
+    // Handle request to get a specific user's online status
+    socket.on('get_user_status', (targetUserId) => {
+        const isOnline = onlineUsers.has(targetUserId.toString());
+        socket.emit('user_status', {
+            userId: targetUserId,
+            isOnline
+        });
     });
 
     // Handle joining chat room for a match
@@ -178,11 +240,17 @@ io.on('connection', (socket) => {
             // Convert to plain object for socket emission
             const messageObj = message.toObject();
 
-            // Send to both users in the match room
+            // Send to both users in the match room (for Chat component)
             io.to(`match_${matchId}`).emit('new_message', messageObj);
             console.log('Message emitted to match room:', `match_${matchId}`);
 
-            // Also send to receiver's user room (in case they're not in chat)
+            // Also send new_message to both user rooms for components not in chat room (ChatList, App.tsx)
+            // This ensures real-time updates work for message previews and notification badges
+            io.to(`user_${socket.userId}`).emit('new_message', messageObj);
+            io.to(`user_${receiverId}`).emit('new_message', messageObj);
+            console.log('Message emitted to user rooms for real-time previews');
+
+            // Also send notification to receiver's user room (in case they're not in chat)
             io.to(`user_${receiverId}`).emit('notification', {
                 type: 'new_message',
                 matchId,
@@ -213,11 +281,100 @@ io.on('connection', (socket) => {
         socket.to(`match_${matchId}`).emit('typing_stop', socket.userId);
     });
 
+    // Event session socket handlers
+    socket.on('join_event_session', (eventId) => {
+        if (!socket.userId) {
+            socket.emit('error', 'Authentication required');
+            return;
+        }
+        socket.join(`event_session_${eventId}`);
+        socket.eventId = eventId;
+        console.log(`User ${socket.userId} joined event session ${eventId}`);
+
+        // Get current participant count in this session
+        const room = io.sockets.adapter.rooms.get(`event_session_${eventId}`);
+        const participantCount = room ? room.size : 0;
+
+        // Notify all users in the session about the new participant count
+        io.to(`event_session_${eventId}`).emit('participant_count_update', {
+            count: participantCount,
+            eventId: eventId
+        });
+
+        // Notify others in the session that a user joined
+        socket.to(`event_session_${eventId}`).emit('user_joined_session', {
+            userId: socket.userId
+        });
+    });
+
+    socket.on('leave_event_session', (eventId) => {
+        socket.leave(`event_session_${eventId}`);
+
+        // Get updated participant count after leaving
+        const room = io.sockets.adapter.rooms.get(`event_session_${eventId}`);
+        const participantCount = room ? room.size : 0;
+
+        // Notify remaining users about the updated count
+        io.to(`event_session_${eventId}`).emit('participant_count_update', {
+            count: participantCount,
+            eventId: eventId
+        });
+
+        socket.to(`event_session_${eventId}`).emit('user_left_session', {
+            userId: socket.userId
+        });
+        console.log(`User ${socket.userId} left event session ${eventId}`);
+    });
+
+    socket.on('partner_matched', async (data) => {
+        const { eventId, partnerId, channelName } = data;
+        if (!socket.userId) {
+            socket.emit('error', 'Authentication required');
+            return;
+        }
+        // Notify both users about the match
+        io.to(`user_${socket.userId}`).emit('partner_found', {
+            partnerId,
+            channelName,
+            eventId
+        });
+        io.to(`user_${partnerId}`).emit('partner_found', {
+            partnerId: socket.userId,
+            channelName,
+            eventId
+        });
+    });
+
     // Handle disconnect
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
+        if (socket.userId) {
+            // Mark user as offline
+            onlineUsers.delete(socket.userId);
+            console.log(`User ${socket.userId} disconnected (online users: ${onlineUsers.size})`);
+
+            // Broadcast offline status to all matched users
+            const matchedUsers = await getUserMatches(socket.userId);
+            matchedUsers.forEach(matchedUserId => {
+                io.to(`user_${matchedUserId}`).emit('user_status_change', {
+                    userId: socket.userId,
+                    isOnline: false
+                });
+            });
+            console.log(`Broadcasted offline status to ${matchedUsers.length} matched users`);
+        }
+
+        if (socket.eventId) {
+            socket.to(`event_session_${socket.eventId}`).emit('user_left_session', {
+                userId: socket.userId
+            });
+        }
         console.log('User disconnected:', socket.id);
     });
 });
+
+// Pass io instance to routes that need it
+setSocketIO(io);
+app.set('io', io);
 
 // Routes
 app.use('/api/events', eventRoutes);
@@ -226,12 +383,49 @@ app.use('/api/matches', matchRoutes);
 app.use('/api/seed', seedRoutes);
 app.use('/api/discovery', discoveryRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/agora', agoraRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/admin', adminRoutes);
 
-// Database Connection
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch((err) => console.error('MongoDB connection error:', err));
+// Database Connection - Wait for connection before starting server
+const HOST = process.env.HOST || '0.0.0.0';
 
-server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+async function startServer() {
+    try {
+        // Validate MongoDB URI is set
+        if (!process.env.MONGODB_URI) {
+            throw new Error('MONGODB_URI is not set in environment variables');
+        }
+
+        console.log('Connecting to MongoDB...');
+        await mongoose.connect(process.env.MONGODB_URI);
+        console.log('✅ Connected to MongoDB successfully');
+
+        // Start server only after MongoDB connection is established
+        server.listen(PORT, HOST, () => {
+            console.log(`✅ Server is running on ${HOST}:${PORT}`);
+            console.log(`📡 API endpoints available at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}/api`);
+            console.log(`🌐 Network access: http://0.0.0.0:${PORT}/api`);
+            console.log(`🔓 CORS: Completely permissive (origin: *)`);
+        });
+    } catch (err) {
+        console.error('❌ MongoDB connection error:', err.message);
+        console.error('Please check your MONGODB_URI in the .env file');
+        process.exit(1);
+    }
+}
+
+// Handle MongoDB connection events
+mongoose.connection.on('error', (err) => {
+    console.error('❌ MongoDB connection error:', err);
 });
+
+mongoose.connection.on('disconnected', () => {
+    console.warn('⚠️ MongoDB disconnected. Attempting to reconnect...');
+});
+
+// Start the server
+startServer();
+
+// Export io instance for use in routes
+export { io };

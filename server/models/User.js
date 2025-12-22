@@ -57,6 +57,23 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Admin status fields
+    status: {
+        type: String,
+        enum: ['active', 'suspended', 'banned'],
+        default: 'active'
+    },
+    statusReason: {
+        type: String,
+        trim: true
+    },
+    statusUpdatedAt: {
+        type: Date
+    },
+    adminNotes: {
+        type: String,
+        trim: true
+    },
     createdAt: {
         type: Date,
         default: Date.now

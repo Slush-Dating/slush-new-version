@@ -11,6 +11,28 @@ interface AuthLayoutProps {
 export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
     return (
         <div className="auth-container">
+            {/* Animated background */}
+            <div className="auth-background">
+                <motion.div
+                    className="auth-orb auth-orb-1"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 0.4, scale: 1 }}
+                    transition={{ duration: 1, delay: 0.2 }}
+                />
+                <motion.div
+                    className="auth-orb auth-orb-2"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 0.4, scale: 1 }}
+                    transition={{ duration: 1, delay: 0.4 }}
+                />
+                <motion.div
+                    className="auth-orb auth-orb-3"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 0.4, scale: 1 }}
+                    transition={{ duration: 1, delay: 0.6 }}
+                />
+            </div>
+
             <motion.div
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}

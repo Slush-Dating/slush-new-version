@@ -7,9 +7,21 @@ import Match from '../models/Match.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import videoProcessor from '../utils/videoProcessor.js';
+import imageProcessor from '../utils/imageProcessor.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+// Default Placeholders
+const DEFAULT_PLACEHOLDERS = [
+    "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&q=80",
+    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800&q=80",
+    "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800&q=80",
+    "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800&q=80",
+    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800&q=80",
+    "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&q=80"
+];
 
 // Configure Multer for File Uploads
 const storage = multer.diskStorage({
@@ -173,13 +185,19 @@ router.get('/profile', async (req, res) => {
             userObj.locationString = 'Sheffield, UK';
         }
 
+        // If no media, provide defaults
+        if ((!userObj.photos || userObj.photos.length === 0) && (!userObj.videos || userObj.videos.length === 0)) {
+            userObj.photos = DEFAULT_PLACEHOLDERS;
+            userObj.videos = [];
+        }
+
         res.json(userObj);
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 });
 
-// Get another user's profile (only if matched)
+// Get another user's profile (anyone can view profiles)
 router.get('/profile/:userId', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -197,17 +215,9 @@ router.get('/profile/:userId', async (req, res) => {
             return res.status(400).json({ message: 'Invalid user ID format' });
         }
 
-        // Verify users are matched
-        const match = await Match.findOne({
-            $or: [
-                { user1: currentUserId, user2: userId },
-                { user1: userId, user2: currentUserId }
-            ],
-            isMatch: true
-        });
-
-        if (!match) {
-            return res.status(403).json({ message: 'You can only view profiles of matched users' });
+        // Prevent users from viewing their own profile through this endpoint
+        if (currentUserId === userId) {
+            return res.status(400).json({ message: 'Use /profile endpoint to view your own profile' });
         }
 
         const user = await User.findById(userId).select('-password -email');
@@ -229,13 +239,19 @@ router.get('/profile/:userId', async (req, res) => {
             userObj.locationString = 'Sheffield, UK';
         }
 
+        // If no media, provide defaults
+        if ((!userObj.photos || userObj.photos.length === 0) && (!userObj.videos || userObj.videos.length === 0)) {
+            userObj.photos = DEFAULT_PLACEHOLDERS;
+            userObj.videos = [];
+        }
+
         res.json(userObj);
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 });
 
-// Upload File
+// Upload File with Processing
 router.post('/upload', (req, res) => {
     // Verify authentication
     const authHeader = req.headers.authorization;
@@ -251,7 +267,7 @@ router.post('/upload', (req, res) => {
     }
 
     // Handle file upload with proper error handling
-    upload.single('file')(req, res, (err) => {
+    upload.single('file')(req, res, async (err) => {
         if (err) {
             // Handle multer errors
             if (err instanceof multer.MulterError) {
@@ -268,8 +284,74 @@ router.post('/upload', (req, res) => {
             return res.status(400).json({ message: 'No file uploaded' });
         }
 
-        const fileUrl = `/uploads/${req.file.filename}`;
-        res.json({ url: fileUrl });
+        const filePath = req.file.path;
+        const mimeType = req.file.mimetype;
+        const isVideo = mimeType.startsWith('video/');
+        const isImage = mimeType.startsWith('image/');
+
+        try {
+            let result;
+
+            if (isVideo) {
+                // Process video: compress, generate thumbnail, extract metadata
+                console.log(`[Upload] Processing video: ${req.file.filename}`);
+                const processed = await videoProcessor.processVideo(filePath, {
+                    generateQualities: false // Skip quality variants for faster upload
+                });
+
+                result = {
+                    url: processed.compressed.url,
+                    thumbnailUrl: processed.thumbnail.url,
+                    originalUrl: processed.original.url,
+                    duration: processed.metadata.duration,
+                    width: processed.metadata.width,
+                    height: processed.metadata.height,
+                    compressionRatio: processed.metadata.compressionRatio,
+                    type: 'video'
+                };
+
+                console.log(`[Upload] Video processed: ${processed.metadata.compressionRatio}% compression`);
+
+            } else if (isImage) {
+                // Process image: compress, create variants
+                console.log(`[Upload] Processing image: ${req.file.filename}`);
+                const processed = await imageProcessor.processImage(filePath, {
+                    sizes: ['thumbnail', 'medium', 'full']
+                });
+
+                result = {
+                    url: processed.fullUrl || processed.original.url,
+                    thumbnailUrl: processed.thumbnailUrl,
+                    mediumUrl: processed.mediumUrl,
+                    originalUrl: processed.original.url,
+                    width: processed.metadata.width,
+                    height: processed.metadata.height,
+                    type: 'image',
+                    variants: processed.variants
+                };
+
+                console.log(`[Upload] Image processed with ${Object.keys(processed.variants).length} variants`);
+
+            } else {
+                // Unknown type, return original
+                result = {
+                    url: `/uploads/${req.file.filename}`,
+                    type: 'unknown'
+                };
+            }
+
+            res.json(result);
+
+        } catch (processingError) {
+            console.error('[Upload] Processing error:', processingError);
+
+            // Fall back to returning original file if processing fails
+            res.json({
+                url: `/uploads/${req.file.filename}`,
+                type: isVideo ? 'video' : isImage ? 'image' : 'unknown',
+                processingError: 'Media optimization failed, using original file'
+            });
+        }
     });
 });
 

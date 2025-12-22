@@ -47,5 +47,9 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access to enable video chat during events.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app requires microphone access to enable voice communication during events.</string>
 </dict>
 </plist>

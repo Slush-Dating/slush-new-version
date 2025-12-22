@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Send, Image, Smile, MoreVertical, Loader2, User, Flag } from 'lucide-react';
 import { chatService, matchService } from '../services/api';
 import socketService from '../services/socketService';
+import { getAbsoluteMediaUrl } from '../services/apiConfig';
 import type { ChatMessage } from '../types';
 import './Chat.css';
 
@@ -24,7 +25,7 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
     const [error, setError] = useState<string | null>(null);
     const [isTyping, setIsTyping] = useState(false);
     const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
-    const [isSocketConnected, setIsSocketConnected] = useState(false);
+    const [isUserOnline, setIsUserOnline] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const socketConnected = useRef(false);
@@ -32,6 +33,8 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
         onNewMessage?: (message: ChatMessage) => void;
         onTypingStart?: (userId: string) => void;
         onTypingStop?: (userId: string) => void;
+        onUserStatusChange?: (data: { userId: string; isOnline: boolean }) => void;
+        onUserStatus?: (data: { userId: string; isOnline: boolean }) => void;
         onError?: (error: string) => void;
     }>({});
 
@@ -137,13 +140,18 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
             setSending(true);
 
             // Try socket first, fallback to HTTP if socket not connected
+            console.log('📤 Sending message, socket connected:', socketService.isConnected);
             if (socketService.isConnected) {
                 try {
+                    console.log('📤 Sending via socket...');
                     await socketService.sendMessage(matchId, content, 'text');
+                    console.log('✅ Message sent via socket');
                     // Socket will broadcast the message back, we'll deduplicate by content+time
                 } catch (socketErr: any) {
+                    console.log('❌ Socket send failed:', socketErr.message);
                     // If socket fails, fallback to HTTP
                     if (socketErr.message === 'Socket not connected') {
+                        console.log('🔄 Falling back to HTTP API');
                         const message = await chatService.sendMessage(matchId, content, 'text');
                         // Replace optimistic message with real one
                         setMessages(prev => prev.map(m =>
@@ -154,6 +162,7 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
                     }
                 }
             } else {
+                console.log('🔄 Socket not connected, using HTTP API');
                 // Use HTTP API as fallback
                 const message = await chatService.sendMessage(matchId, content, 'text');
                 // Replace optimistic message with real one
@@ -184,6 +193,8 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+
 
     // Load match details and chat history
     useEffect(() => {
@@ -223,32 +234,36 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
                 const chatHistory = await chatService.getChatHistory(matchId);
                 setMessages(chatHistory.messages || []);
 
-                // Connect to socket if not connected
+                // Connect to socket if not connected (don't block loading)
                 if (!socketConnected.current) {
-                    try {
-                        await socketService.connect(currentUserId);
+                    console.log('🔌 Chat component: Connecting to socket for user', currentUserId);
+                    socketService.connect(currentUserId).then(() => {
+                        console.log('✅ Chat component: Socket connected, joining chat room', matchId);
                         socketService.joinChat(matchId);
                         socketConnected.current = true;
-                        setIsSocketConnected(socketService.isConnected);
+                        console.log('📊 Socket connection status:', socketService.getConnectionStatus());
+
+                        // Request the other user's online status
+                        if (otherUser.userId) {
+                            socketService.getUserStatus(otherUser.userId);
+                        }
 
                         // Set up event listeners with stored references for cleanup
-                        // Deduplicates messages to handle optimistic updates
                         const onNewMessageCallback = (message: ChatMessage) => {
+                            console.log('📨 Chat component received new message via socket:', message);
                             setMessages(prev => {
-                                // Check for duplicates - match by content and approximate time for optimistic messages
+                                console.log('Current messages count before adding:', prev.length);
                                 const isDuplicate = prev.some(m => {
-                                    // If real message already exists
                                     if (m._id === message._id) return true;
-                                    // If optimistic message matches this server message
                                     if (m._id.startsWith('temp_')) {
                                         const timeDiff = Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime());
-                                        return m.content === message.content && timeDiff < 5000; // Within 5 seconds
+                                        return m.content === message.content && timeDiff < 5000;
                                     }
                                     return false;
                                 });
 
                                 if (isDuplicate) {
-                                    // Replace optimistic message with real one
+                                    console.log('🔄 Duplicate message detected, replacing optimistic message');
                                     return prev.map(m => {
                                         if (m._id.startsWith('temp_') && m.content === message.content) {
                                             return message;
@@ -257,6 +272,7 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
                                     });
                                 }
 
+                                console.log('✨ Adding new message to chat');
                                 return [...prev, message];
                             });
                         };
@@ -279,27 +295,34 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
                         socketService.onTypingStop(onTypingStopCallback);
                         socketCallbacksRef.current.onTypingStop = onTypingStopCallback;
 
+                        const onUserStatusCallback = (data: { userId: string; isOnline: boolean }) => {
+                            if (data.userId === otherUser.userId) {
+                                setIsUserOnline(data.isOnline);
+                                console.log(`User ${data.userId} status:`, data.isOnline ? 'Online' : 'Offline');
+                            }
+                        };
+                        socketService.onUserStatus(onUserStatusCallback);
+                        socketCallbacksRef.current.onUserStatus = onUserStatusCallback;
+
+                        const onUserStatusChangeCallback = (data: { userId: string; isOnline: boolean }) => {
+                            if (data.userId === otherUser.userId) {
+                                setIsUserOnline(data.isOnline);
+                                console.log(`User ${data.userId} status changed:`, data.isOnline ? 'Online' : 'Offline');
+                            }
+                        };
+                        socketService.onUserStatusChange(onUserStatusChangeCallback);
+                        socketCallbacksRef.current.onUserStatusChange = onUserStatusChangeCallback;
+
                         const onErrorCallback = (error: string) => {
                             console.error('Socket error:', error);
-                            setIsSocketConnected(false);
                         };
                         socketService.onError(onErrorCallback);
                         socketCallbacksRef.current.onError = onErrorCallback;
 
-                        // Monitor connection status
-                        const checkConnection = setInterval(() => {
-                            setIsSocketConnected(socketService.isConnected);
-                        }, 1000);
-
-                        // Cleanup interval on component unmount
-                        return () => {
-                            clearInterval(checkConnection);
-                        };
-                    } catch (socketError) {
+                    }).catch((socketError) => {
                         console.error('Failed to connect socket:', socketError);
-                        setIsSocketConnected(false);
                         // Continue without socket - messages will still work via HTTP
-                    }
+                    });
                 }
 
                 setError(null);
@@ -325,6 +348,12 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
                 }
                 if (socketCallbacksRef.current.onTypingStop) {
                     socketService.off('typing_stop', socketCallbacksRef.current.onTypingStop);
+                }
+                if (socketCallbacksRef.current.onUserStatus) {
+                    socketService.off('user_status', socketCallbacksRef.current.onUserStatus);
+                }
+                if (socketCallbacksRef.current.onUserStatusChange) {
+                    socketService.off('user_status_change', socketCallbacksRef.current.onUserStatusChange);
                 }
                 if (socketCallbacksRef.current.onError) {
                     socketService.off('error', socketCallbacksRef.current.onError);
@@ -390,48 +419,41 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
 
     if (loading) {
         return (
-            <motion.div
-                className="chat-container"
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-            >
+            <div className="chat-container">
                 <div className="chat-loading">
                     <Loader2 className="animate-spin" size={40} />
                     <p>Loading chat...</p>
                 </div>
-            </motion.div>
+            </div>
         );
     }
 
     if (error || !matchUser) {
         return (
-            <motion.div
-                className="chat-container"
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-            >
+            <div className="chat-container">
                 <div className="chat-error glass">
                     <p>{error || 'Unable to load chat'}</p>
                     <button className="vibrant-btn" onClick={onBack}>
                         Go Back
                     </button>
                 </div>
-            </motion.div>
+            </div>
         );
     }
 
     return (
-        <motion.div
+        <div
             className="chat-container"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
         >
+            {/* Animated background orbs */}
+            <div className="chat-orbs">
+                <div className="chat-orb chat-orb-1" />
+                <div className="chat-orb chat-orb-2" />
+                <div className="chat-orb chat-orb-3" />
+            </div>
+
             <header className="chat-header glass">
                 <div className="header-left">
                     <button className="back-btn" onClick={onBack}>
@@ -441,9 +463,7 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
                         <div className="user-avatar">
                             {matchUser.imageUrl ? (
                                 <img
-                                    src={matchUser.imageUrl.startsWith('http')
-                                        ? matchUser.imageUrl
-                                        : `http://localhost:5001${matchUser.imageUrl}`}
+                                    src={getAbsoluteMediaUrl(matchUser.imageUrl)}
                                     alt={matchUser.name}
                                 />
                             ) : (
@@ -451,12 +471,12 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
                                     {matchUser.name?.[0]?.toUpperCase() || '?'}
                                 </div>
                             )}
-                            <div className={`online-status ${isSocketConnected ? '' : 'disconnected'}`}></div>
+                            <div className={`online-status ${isUserOnline ? '' : 'disconnected'}`}></div>
                         </div>
                         <div className="user-text">
                             <h4>{matchUser.name}</h4>
-                            <span className={isSocketConnected ? 'online' : 'offline'}>
-                                {isSocketConnected ? 'Connected' : 'Offline'}
+                            <span className={isUserOnline ? 'online' : 'offline'}>
+                                {isUserOnline ? 'Online' : 'Offline'}
                             </span>
                         </div>
                     </div>
@@ -478,37 +498,30 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
                         >
                             <MoreVertical size={20} />
                         </button>
-                        <AnimatePresence>
-                            {showMenu && (
-                                <motion.div
-                                    className="chat-menu-dropdown"
-                                    initial={{ opacity: 0, scale: 0.9, y: -10 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                    exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                        {showMenu && (
+                            <div className="chat-menu-dropdown menu-enter">
+                                <button
+                                    className="menu-item unmatch"
+                                    onClick={() => {
+                                        handleUnmatch();
+                                        setShowMenu(false);
+                                    }}
                                 >
-                                    <button
-                                        className="menu-item unmatch"
-                                        onClick={() => {
-                                            handleUnmatch();
-                                            setShowMenu(false);
-                                        }}
-                                    >
-                                        <Flag size={16} />
-                                        Unmatch
-                                    </button>
-                                    <button
-                                        className="menu-item report"
-                                        onClick={() => {
-                                            handleReport();
-                                            setShowMenu(false);
-                                        }}
-                                    >
-                                        <Flag size={16} />
-                                        Report
-                                    </button>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                                    <Flag size={16} />
+                                    Unmatch
+                                </button>
+                                <button
+                                    className="menu-item report"
+                                    onClick={() => {
+                                        handleReport();
+                                        setShowMenu(false);
+                                    }}
+                                >
+                                    <Flag size={16} />
+                                    Report
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </header>
@@ -590,6 +603,6 @@ export const Chat: React.FC<{ matchId: string, onBack: () => void; onViewProfile
                     </button>
                 </div>
             </footer>
-        </motion.div>
+        </div>
     );
 };

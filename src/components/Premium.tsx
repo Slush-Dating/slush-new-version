@@ -68,7 +68,7 @@ export const Premium: React.FC<PremiumProps> = ({ onBack, onUpgradeSuccess }) =>
                 <button className="back-btn" onClick={onBack}>
                     <ChevronLeft size={20} />
                 </button>
-                <div className="premium-title">Slush Silver</div>
+                <div className="premium-title">Slush Premium</div>
             </header>
 
             <main className="premium-content">
@@ -130,7 +130,7 @@ export const Premium: React.FC<PremiumProps> = ({ onBack, onUpgradeSuccess }) =>
                         {isUpgrading ? 'Processing...' : (
                             <>
                                 <Crown size={20} />
-                                Upgrade to Slush Silver
+                                Upgrade to Slush Premium
                             </>
                         )}
                     </div>

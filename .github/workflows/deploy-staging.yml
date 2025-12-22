@@ -47,14 +47,14 @@ jobs:
             fi
           fi
 
-      - name: Deploy nginx config to VPS
+      - name: Deploy nginx configs to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
-          source: "nginx-config-www-slushdating-com.conf"
+          source: "nginx-config-staging-slushdating-com.conf"
           target: "/tmp/"
 
       - name: Deploy frontend to VPS
@@ -89,10 +89,11 @@ jobs:
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
           script: |
-            # Apply nginx configuration
-            sudo cp /tmp/nginx-config-www-slushdating-com.conf /etc/nginx/sites-available/www-slushdating-com
+            # Apply staging nginx configuration
+            sudo cp /tmp/nginx-config-staging-slushdating-com.conf /etc/nginx/sites-available/staging-slushdating-com
+            sudo ln -sf /etc/nginx/sites-available/staging-slushdating-com /etc/nginx/sites-enabled/staging-slushdating-com
             sudo nginx -t && sudo systemctl restart nginx
-            echo "✅ nginx updated"
+            echo "✅ Staging nginx config applied"
             
             # Update server if changed
             if [ "${{ steps.server-changed.outputs.changed }}" = "true" ]; then
@@ -121,7 +122,7 @@ jobs:
             nginx -t
             ls -la /root/slush-app/dist/
             echo "✅ Staging deployment complete!"
-            echo "🔗 Access at: https://www.slushdating.com/app"
+            echo "🔗 Access at: https://staging.slushdating.com"
 
       - name: Deployment summary
         run: |
@@ -131,5 +132,5 @@ jobs:
           echo "- **Branch**: develop" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Server updated**: ${{ steps.server-changed.outputs.changed }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL**: https://www.slushdating.com/app" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL**: https://staging.slushdating.com" >> $GITHUB_STEP_SUMMARY
 

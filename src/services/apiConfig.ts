@@ -38,7 +38,6 @@ const getServerHost = (): string => {
 
     // Priority 3: Check if we're on a production/staging domain
     const isProductionDomain = currentHostname.endsWith('slushdating.com') ||
-        currentHostname.endsWith('slushdating.co.uk') ||
         currentHostname.startsWith('staging.');
     if (isProductionDomain) {
         console.log('📍 Using production/staging domain for API calls:', currentHostname);
@@ -70,13 +69,20 @@ const getServerHost = (): string => {
 export const getApiBaseUrl = (): string => {
     const hostname = getServerHost();
 
-    // Use http protocol for local development, respect current protocol otherwise
-    // For production domain, don't include port (nginx handles routing)
     // Check if hostname is already a full URL (from VITE_API_URL)
     const isFullUrl = hostname.startsWith('http');
-    const hostForCheck = isFullUrl ? new URL(hostname).hostname : hostname;
+
+    if (isFullUrl) {
+        // If we have a full URL from VITE_API_URL, just append /api
+        const apiUrl = `${hostname}/api`;
+        console.log('🔗 API Base URL:', apiUrl);
+        return apiUrl;
+    }
+
+    // Use http protocol for local development, respect current protocol otherwise
+    // For production domain, don't include port (nginx handles routing)
+    const hostForCheck = hostname;
     const isProductionDomain = hostForCheck.endsWith('slushdating.com') ||
-        hostForCheck.endsWith('slushdating.co.uk') ||
         hostForCheck.startsWith('staging.');
     const protocol = (hostname === 'localhost' || hostname.startsWith('192.168.') || hostname.startsWith('10.'))
         ? 'http:'
@@ -102,7 +108,6 @@ export const getSocketUrl = (): string => {
     const isFullUrl = hostname.startsWith('http');
     const hostForCheck = isFullUrl ? new URL(hostname).hostname : hostname;
     const isProductionDomain = hostForCheck.endsWith('slushdating.com') ||
-        hostForCheck.endsWith('slushdating.co.uk') ||
         hostForCheck.startsWith('staging.');
 
     // If we got a full URL from VITE_API_URL, use it directly (without /api path)
@@ -132,7 +137,6 @@ export const getMediaBaseUrl = (): string => {
     const isFullUrl = hostname.startsWith('http');
     const hostForCheck = isFullUrl ? new URL(hostname).hostname : hostname;
     const isProductionDomain = hostForCheck.endsWith('slushdating.com') ||
-        hostForCheck.endsWith('slushdating.co.uk') ||
         hostForCheck.startsWith('staging.');
 
     // If we got a full URL from VITE_API_URL, use it directly

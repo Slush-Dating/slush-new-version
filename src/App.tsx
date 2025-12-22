@@ -20,7 +20,7 @@ import { MatchOverlay } from './components/MatchOverlay';
 import { ChatList } from './components/ChatList';
 import { Notifications } from './components/Notifications';
 import { ToastNotification, type Toast } from './components/ToastNotification';
-import { chatService } from './services/api';
+import { chatService, eventService } from './services/api';
 import socketService from './services/socketService';
 import { getMediaBaseUrl } from './services/apiConfig';
 import { PlayCircle, User, Compass, Heart, MessageSquare } from 'lucide-react';

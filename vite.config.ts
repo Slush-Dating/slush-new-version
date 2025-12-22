@@ -3,15 +3,13 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  // Use /app/ base path for production builds (VPS deployment)
-  // Use ./ for development and mobile builds (Capacitor)
-  // Check for VITE_USE_SUBPATH env var to override
-  const useSubpath = process.env.VITE_USE_SUBPATH === 'true' || 
-                     (mode === 'production' && process.env.VITE_USE_SUBPATH !== 'false');
-  
+  // Use / base path for web builds (VPS deployment)
+  // Use ./ only if specifically requested (e.g. for pure static or some mobile builds)
+  const base = (mode === 'production' || mode === 'staging') ? '/' : './';
+
   return {
     plugins: [react()],
-    base: useSubpath ? '/app/' : './',
+    base,
     server: {
       host: true, // Listen on all addresses, including LAN
       port: 5175,

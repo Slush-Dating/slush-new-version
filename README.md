@@ -263,4 +263,4 @@ npm run deploy:staging      # Deploy to staging (manual)
 npm run deploy:production   # Deploy to production (manual)
 ```
 
-**Note**: Manual deployments require SSH access. Use automated GitHub Actions workflow for all regular deployments.
+**Note**: Manual deployments require SSH access. Use automated GitHub Actions workflow for all regular deployments.# Test CI/CD

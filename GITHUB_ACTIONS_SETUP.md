@@ -24,6 +24,11 @@ You need to set up the following secrets in your GitHub repository for the workf
 | `VPS_HOST` | Your VPS server IP address | `80.190.80.106` |
 | `VPS_USER` | SSH username for your VPS | `root` |
 | `VPS_PASSWORD` | SSH password for your VPS | `YourPassword123!` |
+| `MONGODB_URI_PRODUCTION` | Production MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net/slush_production` |
+| `MONGODB_URI_STAGING` | Staging MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net/slush_staging` |
+| `AGORA_APP_ID` | Agora.io App ID for video calls | `your_agora_app_id` |
+| `AGORA_APP_CERTIFICATE` | Agora.io App Certificate | `your_agora_certificate` |
+| `JWT_SECRET` | JWT secret for authentication | `your_jwt_secret_here` |
 
 ⚠️ **Important**: Never commit passwords or secrets to your repository. Always use GitHub Secrets.
 

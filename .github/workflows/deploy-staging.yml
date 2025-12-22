@@ -81,6 +81,29 @@ jobs:
           target: "/tmp/slush-server-update"
           strip_components: 1
 
+      - name: Create staging server .env file
+        if: steps.server-changed.outputs.changed == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
+          script: |
+            # Create staging-specific .env file for server
+            cat > /tmp/slush-server-update/.env << 'EOF'
+            PORT=5001
+            MONGODB_URI=${{ secrets.MONGODB_URI_PRODUCTION }}
+            MONGODB_URI_STAGING=${{ secrets.MONGODB_URI_STAGING }}
+            AGORA_APP_ID=${{ secrets.AGORA_APP_ID }}
+            AGORA_APP_CERTIFICATE=${{ secrets.AGORA_APP_CERTIFICATE }}
+            NODE_ENV=staging
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            HOST=0.0.0.0
+            VITE_API_HOST=staging.slushdating.com
+            OLD_MONGODB_URI=mongodb://localhost:27017/slush
+            EOF
+
       - name: Apply nginx config and restart services
         uses: appleboy/ssh-action@v1.0.3
         with:

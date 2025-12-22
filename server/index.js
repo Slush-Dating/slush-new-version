@@ -391,15 +391,28 @@ app.use('/api/admin', adminRoutes);
 // Database Connection - Wait for connection before starting server
 const HOST = process.env.HOST || '0.0.0.0';
 
+// Determine which MongoDB URI to use based on environment
+const getMongoDBUri = () => {
+    // Check if we're in staging environment
+    const isStaging = process.env.NODE_ENV === 'staging' || process.env.VITE_ENV === 'staging';
+
+    if (isStaging && process.env.MONGODB_URI_STAGING) {
+        console.log('🌍 Using STAGING database');
+        return process.env.MONGODB_URI_STAGING;
+    } else if (process.env.MONGODB_URI) {
+        console.log('🏭 Using PRODUCTION database');
+        return process.env.MONGODB_URI;
+    } else {
+        throw new Error('MONGODB_URI is not set in environment variables');
+    }
+};
+
 async function startServer() {
     try {
-        // Validate MongoDB URI is set
-        if (!process.env.MONGODB_URI) {
-            throw new Error('MONGODB_URI is not set in environment variables');
-        }
+        const mongoUri = getMongoDBUri();
 
         console.log('Connecting to MongoDB...');
-        await mongoose.connect(process.env.MONGODB_URI);
+        await mongoose.connect(mongoUri);
         console.log('✅ Connected to MongoDB successfully');
 
         // Start server only after MongoDB connection is established

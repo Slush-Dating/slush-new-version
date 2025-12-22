@@ -290,8 +290,8 @@ NRvKXCsUqnbUKw4P
 
 ### 🎯 Branch Strategy (IMPORTANT!)
 
-- **Work on `develop` branch** → Deploys to staging for testing
-- **Only merge to `main`** → Deploys to production when ready
+- **Work on `develop` branch** → Deploys to staging for testing (uses separate staging database)
+- **Only merge to `main`** → Deploys to production when ready (uses production database)
 
 ### 🚀 Deploy to Staging (For Testing)
 
@@ -309,6 +309,8 @@ git push origin develop
 
 **Result**: Auto-deploys to `https://staging.slushdating.com` within 2-5 minutes.
 
+**Database**: Uses separate `slush_staging` database - your events and data won't affect production.
+
 ### 🚀 Deploy to Production (When Ready)
 
 **Only after testing on staging!**
@@ -323,6 +325,8 @@ git push origin main
 ```
 
 **Result**: Auto-deploys to `https://app.slushdating.com` within 2-5 minutes.
+
+**Database**: Uses `slush_production` database - completely separate from staging.
 
 ### 📋 Quick Start Checklist
 

@@ -247,20 +247,55 @@ NRvKXCsUqnbUKw4P
 
 ## Deployment
 
-### Automated Deployment (CI/CD)
+### 🎯 Branch Strategy (IMPORTANT!)
 
-Deployments are **fully automated** via GitHub Actions:
+- **Work on `develop` branch** → Deploys to staging for testing
+- **Only merge to `main`** → Deploys to production when ready
 
-- **Push to `develop`** → Auto-deploys to `staging.slushdating.com`
-- **Push to `main`** → Auto-deploys to `app.slushdating.com`
+### 🚀 Deploy to Staging (For Testing)
 
-See [GIT_WORKFLOW.md](./GIT_WORKFLOW.md) for complete workflow documentation.
-
-### Manual Deployment (Legacy)
+**Always work here first!**
 
 ```bash
-npm run deploy:staging      # Deploy to staging (manual)
-npm run deploy:production   # Deploy to production (manual)
+# Switch to develop branch
+git checkout develop
+
+# Make your changes
+git add .
+git commit -m "your commit message"
+git push origin develop
 ```
 
-**Note**: Manual deployments require SSH access. Use automated GitHub Actions workflow for all regular deployments.# Test CI/CD
+**Result**: Auto-deploys to `https://staging.slushdating.com` within 2-5 minutes.
+
+### 🚀 Deploy to Production (When Ready)
+
+**Only after testing on staging!**
+
+```bash
+# Switch to main branch
+git checkout main
+
+# Merge tested changes from develop
+git merge develop
+git push origin main
+```
+
+**Result**: Auto-deploys to `https://app.slushdating.com` within 2-5 minutes.
+
+### 📋 Quick Start Checklist
+
+1. **Configure GitHub Secrets** (see [GITHUB_SECRETS_SETUP.md](./GITHUB_SECRETS_SETUP.md))
+2. **Work on `develop` branch** (staging)
+3. **Test on `https://staging.slushdating.com`**
+4. **Merge to `main`** (production) when ready
+5. **Check `https://app.slushdating.com`** for live site
+
+### 🔧 Manual Deployment (Emergency Only)
+
+```bash
+npm run deploy:staging      # Manual staging deploy
+npm run deploy:production   # Manual production deploy
+```
+
+**Note**: Use automated deployment for all regular deployments. Manual deployment requires SSH access.# Test CI/CD

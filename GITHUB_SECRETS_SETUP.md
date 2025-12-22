@@ -53,6 +53,8 @@ After adding all secrets, you should see:
    - Only repository collaborators with admin access can view/edit secrets
    - Review who has access to your repository
 
+   DA49-D5B7
+
 4. **Rotate secrets regularly**
    - Change passwords periodically
    - Update secrets if compromised

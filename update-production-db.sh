@@ -13,7 +13,7 @@ cp .env .env.backup
 cat > .env << 'ENVEOF'
 PORT=5001
 HOST=0.0.0.0
-MONGODB_URI=mongodb+srv://virtualspeeddate1_db_user:NRvKXCsUqnbUKw4P@cluster0.a9ozntt.mongodb.net/slush?retryWrites=true&w=majority
+MONGODB_URI=${MONGODB_URI}
 NODE_ENV=production
 ENVEOF
 

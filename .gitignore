@@ -31,3 +31,7 @@ dist-ssr
 
 # Deployment commands (contains sensitive deployment info)
 .deploy-commands.sh
+
+# Marketing site - NEVER deploy this folder
+# The marketing/ folder is for reference only and should never be deployed
+# It would overwrite the live marketing site at www.slushdating.com

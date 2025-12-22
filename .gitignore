@@ -28,3 +28,6 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Deployment commands (contains sensitive deployment info)
+.deploy-commands.sh

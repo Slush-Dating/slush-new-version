@@ -79,7 +79,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter basename="/app">
+    <BrowserRouter basename={import.meta.env.VITE_USE_SUBPATH === 'false' ? '/' : '/app'}>
       <Routes>
         <Route path="/admin" element={<AdminPanel />} />
         <Route

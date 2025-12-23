@@ -33,8 +33,37 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         videos: [] as string[]
     });
     const [uploading, setUploading] = useState<string | null>(null);
+    const [validating, setValidating] = useState<string | null>(null);
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'photo' | 'video') => {
+    // Validate video URL is accessible and playable
+    const validateVideoUrl = (url: string): Promise<boolean> => {
+        return new Promise((resolve) => {
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            video.crossOrigin = 'anonymous';
+
+            const timeout = setTimeout(() => {
+                video.remove();
+                resolve(false); // Timeout after 10 seconds
+            }, 10000);
+
+            video.onloadedmetadata = () => {
+                clearTimeout(timeout);
+                video.remove();
+                resolve(true); // Video is valid and metadata loaded
+            };
+
+            video.onerror = () => {
+                clearTimeout(timeout);
+                video.remove();
+                resolve(false); // Video failed to load
+            };
+
+            video.src = url;
+        });
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'photo' | 'video', retryCount = 0) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -69,11 +98,63 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                 console.log(`Large video detected: ${(file.size / (1024 * 1024)).toFixed(1)}MB - will be processed server-side`);
             }
 
-            const { url } = await authService.uploadFile(token, file);
+            const uploadResult = await authService.uploadFile(token, file);
+
+            // Check if video processing failed and fell back to original file
+            if (type === 'video' && uploadResult.fallback) {
+                const errorMessage = uploadResult.processingError || 'Video processing failed - using original file which may be large or incompatible.';
+                console.warn('Video upload fallback:', errorMessage);
+
+                // Offer retry for processing failures
+                if (retryCount < 2) {
+                    const retry = confirm(`${errorMessage}\n\nWould you like to retry uploading this file? (${retryCount + 1}/3 attempts)`);
+                    if (retry) {
+                        // Reset the input and try again
+                        e.target.value = '';
+                        setTimeout(() => {
+                            handleFileChange(e, type, retryCount + 1);
+                        }, 100);
+                        return;
+                    }
+                }
+
+                // Show warning but still allow the upload
+                const proceed = confirm(`${errorMessage}\n\nThe video was uploaded but may not play properly or be very large. Do you want to use it anyway?`);
+
+                if (!proceed) {
+                    return; // Don't add the video to the form data
+                }
+            }
+
+            // For videos, validate that the uploaded video is actually playable
+            if (type === 'video') {
+                const fullUrl = `${getMediaBaseUrl()}${uploadResult.url}`;
+                console.log('Validating video URL:', fullUrl);
+
+                setValidating('video');
+                const isValid = await validateVideoUrl(fullUrl);
+                setValidating(null);
+
+                if (!isValid) {
+                    if (retryCount < 2) {
+                        const retry = confirm(`The uploaded video appears to be corrupted or incompatible. Would you like to retry uploading this file? (${retryCount + 1}/3 attempts)`);
+                        if (retry) {
+                            // Reset the input and try again
+                            e.target.value = '';
+                            setTimeout(() => {
+                                handleFileChange(e, type, retryCount + 1);
+                            }, 100);
+                            return;
+                        }
+                    }
+                    alert('The uploaded video appears to be corrupted or incompatible. Please try uploading a different video file.');
+                    return; // Don't add invalid video to form data
+                }
+            }
 
             setFormData(prev => ({
                 ...prev,
-                [type === 'photo' ? 'photos' : 'videos']: [...prev[type === 'photo' ? 'photos' : 'videos'], url]
+                [type === 'photo' ? 'photos' : 'videos']: [...prev[type === 'photo' ? 'photos' : 'videos'], uploadResult.url]
             }));
         } catch (err: any) {
             console.error('Upload failed:', err);
@@ -364,7 +445,10 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                                     <label
                                         key={`upload-video-${i}`}
                                         className="photo-slot upload-btn"
-                                        style={{ opacity: uploading === 'video' ? 0.6 : 1, pointerEvents: uploading === 'video' ? 'none' : 'auto' }}
+                                        style={{
+                                            opacity: (uploading === 'video' || validating === 'video') ? 0.6 : 1,
+                                            pointerEvents: (uploading === 'video' || validating === 'video') ? 'none' : 'auto'
+                                        }}
                                         onClick={(e) => {
                                             if (uploading === 'video') return;
                                             const input = e.currentTarget.querySelector('input[type="file"]') as HTMLInputElement;
@@ -381,6 +465,11 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                                             <div className="upload-progress">
                                                 <div className="spinner"></div>
                                                 <span className="progress-text">Processing...</span>
+                                            </div>
+                                        ) : validating === 'video' ? (
+                                            <div className="upload-progress">
+                                                <div className="spinner"></div>
+                                                <span className="progress-text">Validating...</span>
                                             </div>
                                         ) : (
                                             <Sparkles size={28} />

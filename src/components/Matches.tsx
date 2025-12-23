@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { MessageCircle, Heart, Loader2, Sparkles, Users, Zap } from 'lucide-react';
-import { matchService, type Match } from '../services/api';
+import { matchService, type Match, type LikedYouUser } from '../services/api';
 import socketService from '../services/socketService';
 import { getAbsoluteMediaUrl } from '../services/apiConfig';
 import './Matches.css';
@@ -13,7 +13,7 @@ export const Matches: React.FC<{
 }> = ({ user, onChat, onProfile, onUpgrade }) => {
     const [activeTab, setActiveTab] = useState<'matches' | 'likedYou'>('matches');
     const [matches, setMatches] = useState<Match[]>([]);
-    const [likedYou, setLikedYou] = useState<any[]>([]);
+    const [likedYou, setLikedYou] = useState<LikedYouUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +48,14 @@ export const Matches: React.FC<{
             try {
                 // Fetch liked you data secondary
                 const likedYouData = await matchService.getLikedYou();
-                setLikedYou(likedYouData);
+                // Sort to prioritize super-liked users at the top
+                const sortedLikedYou = likedYouData.sort((a, b) => {
+                    if (a.isSuperLike && !b.isSuperLike) return -1;
+                    if (!a.isSuperLike && b.isSuperLike) return 1;
+                    // If both are super-liked or neither, sort by likedAt (most recent first)
+                    return new Date(b.likedAt).getTime() - new Date(a.likedAt).getTime();
+                });
+                setLikedYou(sortedLikedYou);
             } catch (err: any) {
                 console.error('Failed to fetch liked you users:', err);
                 // We don't set the main error here so matches still show
@@ -268,7 +275,7 @@ export const Matches: React.FC<{
                                     {matches.map(match => (
                                         <div
                                             key={match.id}
-                                            className="match-card glass"
+                                            className={`match-card glass ${match.isSuperLike ? 'super-liked' : ''}`}
                                             onClick={() => onProfile(match.userId)}
                                             style={{ cursor: 'pointer' }}
                                         >
@@ -300,6 +307,11 @@ export const Matches: React.FC<{
                                                     <div className="online-dot"></div>
                                                     <span>{formatLastActive(match.matchedAt)}</span>
                                                 </div>
+                                                {match.isSuperLike && (
+                                                    <div className="super-like-indicator">
+                                                        <span>Super Match! ✨</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -311,7 +323,7 @@ export const Matches: React.FC<{
                     <section className="liked-you-section">
                         <div className="matches-grid">
                             {likedYou.map((like) => (
-                                <div key={like.id} className={`match-card glass liked-you-card ${!user.isPremium ? 'premium-locked' : ''}`}>
+                                <div key={like.id} className={`match-card glass liked-you-card ${like.isSuperLike ? 'super-liked' : ''} ${!user.isPremium ? 'premium-locked' : ''}`}>
                                     <div className={`match-image-container ${!user.isPremium ? 'blurred' : ''}`}>
                                         {like.imageUrl ? (
                                             <img
@@ -328,6 +340,11 @@ export const Matches: React.FC<{
                                     {user.isPremium && (
                                         <div className="match-info-overlay">
                                             <h4>{like.name}{like.age && `, ${like.age}`}</h4>
+                                            {like.isSuperLike && (
+                                                <div className="super-like-indicator">
+                                                    <span>Super Liked You!</span>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>

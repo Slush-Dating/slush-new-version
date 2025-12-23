@@ -287,6 +287,13 @@ router.get('/', authenticate, async (req, res) => {
                 }
             }
 
+            // Check if this match was created via a super-like
+            const isSuperLike = match.actions.some(action =>
+                (action.action === 'super_like') &&
+                ((action.fromUser.toString() === userId.toString() && action.toUser.toString() === otherUser._id?.toString()) ||
+                 (action.fromUser.toString() === otherUser._id?.toString() && action.toUser.toString() === userId.toString()))
+            );
+
             return {
                 id: match._id.toString(),
                 userId: otherUser._id?.toString() || otherUser.toString(),
@@ -305,6 +312,7 @@ router.get('/', authenticate, async (req, res) => {
                 } : null,
                 isNew: match.matchedAt &&
                     (Date.now() - new Date(match.matchedAt).getTime()) < 24 * 60 * 60 * 1000, // New if matched in last 24 hours
+                isSuperLike,
                 lastMessage: lastMessage ? {
                     content: lastMessage.content,
                     createdAt: lastMessage.createdAt,
@@ -364,6 +372,13 @@ router.get('/liked-you', authenticate, async (req, res) => {
                 }
             }
 
+            // Check if this like was a super-like
+            const isSuperLike = match.actions.some(action =>
+                action.action === 'super_like' &&
+                action.fromUser.toString() === otherUser._id?.toString() &&
+                action.toUser.toString() === userId.toString()
+            );
+
             return {
                 id: match._id.toString(),
                 userId: otherUser._id?.toString() || otherUser.toString(),
@@ -373,7 +388,8 @@ router.get('/liked-you', authenticate, async (req, res) => {
                     ? otherUser.photos[0]
                     : null,
                 bio: otherUser.bio || '',
-                likedAt: match.updatedAt
+                likedAt: match.updatedAt,
+                isSuperLike
             };
         }).filter(user => user !== null);
 

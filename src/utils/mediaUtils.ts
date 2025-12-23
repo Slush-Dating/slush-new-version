@@ -216,6 +216,249 @@ export const getOptimalBufferSize = async (videoDuration: number): Promise<numbe
     }
 };
 
+/**
+ * Compress video file on the client side before upload
+ * Note: This is a basic implementation. For production, consider using libraries like ffmpeg.wasm
+ */
+export const compressVideoClient = async (
+    file: File,
+    options: {
+        maxWidth?: number;
+        maxHeight?: number;
+        quality?: number;
+        onProgress?: (progress: number) => void;
+    } = {}
+): Promise<File> => {
+    const {
+        maxWidth = 720,
+        maxHeight = 1280,
+        quality = 0.7,
+        onProgress
+    } = options;
+
+    // Check if file is already small enough to skip compression
+    const originalSizeMB = file.size / (1024 * 1024);
+    if (originalSizeMB <= 5) { // Skip compression for files under 5MB
+        return file;
+    }
+
+    try {
+        // Double check threshold (redundant but safe)
+        if (originalSizeMB <= 5) {
+            console.log('Video is small enough, skipping compression');
+            return file;
+        }
+
+        console.log(`Starting video compression for ${originalSizeMB.toFixed(1)}MB file`);
+
+        // Compress video using MediaRecorder approach
+        const compressedBlob = await compressVideoWithMediaRecorder(file, {
+            maxWidth,
+            maxHeight,
+            quality,
+            onProgress
+        });
+
+        if (compressedBlob && compressedBlob.size < file.size * 0.7) { // Only use if reduced by at least 30%
+            const compressedSizeMB = compressedBlob.size / (1024 * 1024);
+            console.log(`Compression successful: ${originalSizeMB.toFixed(1)}MB → ${compressedSizeMB.toFixed(1)}MB`);
+
+            const compressedFile = new File([compressedBlob], file.name.replace(/\.[^/.]+$/, '.webm'), {
+                type: 'video/webm',
+                lastModified: Date.now()
+            });
+            return compressedFile;
+        } else {
+            console.log('Compression did not reduce file size significantly, using original');
+            return file;
+        }
+
+    } catch (error) {
+        console.warn('Client-side video compression failed, using original file:', error);
+        // Return original file if compression fails
+        return file;
+    }
+};
+
+/**
+ * Compress video using MediaRecorder API with better quality settings
+ */
+const compressVideoWithMediaRecorder = async (
+    file: File,
+    options: {
+        maxWidth: number;
+        maxHeight: number;
+        quality: number;
+        onProgress?: (progress: number) => void;
+    }
+): Promise<Blob | null> => {
+    const { maxWidth, maxHeight, quality, onProgress } = options;
+
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        let mediaRecorder: MediaRecorder | null = null;
+        const chunks: Blob[] = [];
+
+        if (!ctx) {
+            reject(new Error('Canvas context not available'));
+            return;
+        }
+
+        video.preload = 'auto';
+        video.src = URL.createObjectURL(file);
+        video.muted = true;
+        video.playsInline = true;
+
+        video.onloadedmetadata = () => {
+            // Calculate target dimensions
+            const aspectRatio = video.videoWidth / video.videoHeight;
+            let targetWidth = Math.min(video.videoWidth, maxWidth);
+            let targetHeight = Math.min(video.videoHeight, maxHeight);
+
+            // Maintain aspect ratio
+            if (targetWidth / targetHeight > aspectRatio) {
+                targetWidth = targetHeight * aspectRatio;
+            } else {
+                targetHeight = targetWidth / aspectRatio;
+            }
+
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+
+            // If video is already small enough, skip compression
+            if (video.videoWidth <= maxWidth && video.videoHeight <= maxHeight && file.size <= 10 * 1024 * 1024) {
+                URL.revokeObjectURL(video.src);
+                resolve(null); // Signal to skip compression
+                return;
+            }
+
+            // Start playing video for recording
+            video.play().catch(reject);
+        };
+
+        video.onplay = () => {
+            try {
+                // Set up MediaRecorder with canvas stream
+                const stream = canvas.captureStream(30); // 30 FPS
+                const options = {
+                    mimeType: 'video/webm;codecs=vp9',
+                    videoBitsPerSecond: Math.min(2000000, quality * 2000000) // Adaptive bitrate based on quality
+                };
+
+                // Fallback if vp9 is not supported
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    options.mimeType = 'video/webm;codecs=vp8';
+                }
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    options.mimeType = 'video/mp4';
+                }
+
+                mediaRecorder = new MediaRecorder(stream, options);
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        chunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    const compressedBlob = new Blob(chunks, { type: 'video/webm' });
+                    URL.revokeObjectURL(video.src);
+                    resolve(compressedBlob);
+                };
+
+                mediaRecorder.onerror = () => {
+                    URL.revokeObjectURL(video.src);
+                    reject(new Error('MediaRecorder error'));
+                };
+
+                // Start recording
+                mediaRecorder.start();
+
+                // Draw video frames to canvas and stop after full video
+                const drawFrame = () => {
+                    if (video.ended || !mediaRecorder || mediaRecorder.state === 'inactive') {
+                        if (mediaRecorder && mediaRecorder.state === 'recording') {
+                            mediaRecorder.stop();
+                        }
+                        return;
+                    }
+
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    if (onProgress) {
+                        const progress = (video.currentTime / video.duration) * 100;
+                        onProgress(progress);
+                    }
+
+                    requestAnimationFrame(drawFrame);
+                };
+
+                drawFrame();
+
+            } catch (error) {
+                URL.revokeObjectURL(video.src);
+                reject(error);
+            }
+        };
+
+        video.onended = () => {
+            // Stop recording when video ends
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        };
+
+        video.onerror = () => {
+            URL.revokeObjectURL(video.src);
+            reject(new Error('Failed to load video for compression'));
+        };
+
+        // Set timeout for compression
+        setTimeout(() => {
+            URL.revokeObjectURL(video.src);
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            reject(new Error('Video compression timed out'));
+        }, 60000); // 60 second timeout for compression
+    });
+};
+
+/**
+ * Get video file metadata without loading the full video
+ */
+export const getVideoFileMetadata = async (file: File): Promise<{
+    duration?: number;
+    width?: number;
+    height?: number;
+    size: number;
+}> => {
+    return new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+
+        video.onloadedmetadata = () => {
+            URL.revokeObjectURL(video.src);
+            resolve({
+                duration: video.duration,
+                width: video.videoWidth,
+                height: video.videoHeight,
+                size: file.size
+            });
+        };
+
+        video.onerror = () => {
+            URL.revokeObjectURL(video.src);
+            resolve({ size: file.size });
+        };
+
+        video.src = URL.createObjectURL(file);
+    });
+};
+
 export default {
     getNetworkType,
     isOnline,
@@ -227,5 +470,7 @@ export default {
     estimateDownloadSpeed,
     shouldAutoPlay,
     formatDuration,
-    getOptimalBufferSize
+    getOptimalBufferSize,
+    compressVideoClient,
+    getVideoFileMetadata
 };

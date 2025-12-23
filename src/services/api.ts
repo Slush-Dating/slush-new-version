@@ -42,6 +42,7 @@ export interface Match {
         location: string;
     } | null;
     isNew: boolean;
+    isSuperLike?: boolean;
     lastMessage?: {
         content: string;
         createdAt: string;
@@ -59,6 +60,17 @@ export interface MatchActionResponse {
         matchedAt: string;
         context: string;
     } | null;
+}
+
+export interface LikedYouUser {
+    id: string;
+    userId: string;
+    name: string;
+    age: number | null;
+    imageUrl: string | null;
+    bio: string;
+    likedAt: string;
+    isSuperLike?: boolean;
 }
 
 export interface MatchStats {
@@ -548,7 +560,17 @@ export const discoveryService = {
             throw new Error('Not authenticated');
         }
 
-        const url = new URL(`${API_BASE_URL}/discovery/event-partners`);
+        // Handle both absolute and relative API base URLs
+        let eventPartnersUrl: string;
+        if (API_BASE_URL.startsWith('http')) {
+            // Absolute URL – safe to use directly
+            eventPartnersUrl = `${API_BASE_URL}/discovery/event-partners`;
+        } else {
+            // Relative URL – prepend the current origin to form a full URL
+            eventPartnersUrl = `${window.location.origin}${API_BASE_URL}/discovery/event-partners`;
+        }
+
+        const url = new URL(eventPartnersUrl);
         if (eventId) {
             url.searchParams.append('eventId', eventId);
         }
@@ -579,7 +601,17 @@ export const chatService = {
             throw new Error('Not authenticated');
         }
 
-        const url = new URL(`${API_BASE_URL}/chat/${matchId}`);
+        // Handle both absolute and relative API base URLs
+        let chatUrl: string;
+        if (API_BASE_URL.startsWith('http')) {
+            // Absolute URL – safe to use directly
+            chatUrl = `${API_BASE_URL}/chat/${matchId}`;
+        } else {
+            // Relative URL – prepend the current origin to form a full URL
+            chatUrl = `${window.location.origin}${API_BASE_URL}/chat/${matchId}`;
+        }
+
+        const url = new URL(chatUrl);
         if (page) url.searchParams.append('page', page.toString());
         if (limit) url.searchParams.append('limit', limit.toString());
 
@@ -776,7 +808,17 @@ export const notificationService = {
             throw new Error('Not authenticated');
         }
 
-        const url = new URL(`${API_BASE_URL}/notifications`);
+        // Handle both absolute and relative API base URLs
+        let notificationsUrl: string;
+        if (API_BASE_URL.startsWith('http')) {
+            // Absolute URL – safe to use directly
+            notificationsUrl = `${API_BASE_URL}/notifications`;
+        } else {
+            // Relative URL – prepend the current origin to form a full URL
+            notificationsUrl = `${window.location.origin}${API_BASE_URL}/notifications`;
+        }
+
+        const url = new URL(notificationsUrl);
         if (type && type !== 'all') {
             url.searchParams.append('type', type);
         }

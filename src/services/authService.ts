@@ -10,16 +10,16 @@ export const authService = {
         console.log('🔗 Register API URL:', fullUrl);
         console.log('📍 Current hostname:', window.location.hostname);
         console.log('📍 Current protocol:', window.location.protocol);
-        
+
         try {
             const response = await fetch(fullUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
             });
-            
+
             console.log('📡 Register response status:', response.status, response.statusText);
-            
+
             if (!response.ok) {
                 let error;
                 try {
@@ -57,16 +57,16 @@ export const authService = {
         console.log('🔗 Login API URL:', fullUrl);
         console.log('📍 Current hostname:', window.location.hostname);
         console.log('📍 Current protocol:', window.location.protocol);
-        
+
         try {
             const response = await fetch(fullUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
             });
-            
+
             console.log('📡 Login response status:', response.status, response.statusText);
-            
+
             if (!response.ok) {
                 let error;
                 try {
@@ -130,13 +130,29 @@ export const authService = {
 
         if (!response.ok) {
             let errorMessage = 'Upload failed';
+            let errorType = 'unknown';
             try {
                 const error = await response.json();
                 errorMessage = error.message || errorMessage;
+                errorType = error.errorType || errorType;
             } catch (e) {
                 // If response is not JSON, use status text
                 errorMessage = response.statusText || errorMessage;
             }
+
+            // Provide user-friendly messages for common errors
+            if (errorType === 'ffmpeg_missing') {
+                errorMessage = 'Video processing is not available on this server. Please contact support.';
+            } else if (errorType === 'processing_timeout') {
+                errorMessage = 'Video upload timed out. Please try with a smaller video file.';
+            } else if (errorType === 'file_not_found') {
+                errorMessage = 'Upload failed - file could not be processed. Please try again.';
+            } else if (response.status === 413) {
+                errorMessage = 'File is too large. Please choose a video under 30 seconds and 100MB.';
+            } else if (response.status === 401) {
+                errorMessage = 'Authentication failed. Please log in again.';
+            }
+
             throw new Error(errorMessage);
         }
 

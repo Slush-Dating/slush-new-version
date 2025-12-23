@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { Heart, Star, X, MapPin, Loader2 } from 'lucide-react';
+import { Heart, Snowflake, X, MapPin, Loader2 } from 'lucide-react';
 import { matchService, discoveryService } from '../services/api';
 import { getMediaBaseUrl } from '../services/apiConfig';
 import './VideoFeed.css';
@@ -152,17 +152,23 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, onMatch }) 
                 setError(null);
                 const feed = await discoveryService.getFeed(20);
 
-                // Convert DiscoveryProfile to Profile format
-                const formattedProfiles: Profile[] = feed.map(p => ({
-                    id: p.id,
-                    userId: p.userId,
-                    name: p.name,
-                    age: p.age || 0,
-                    bio: p.bio,
-                    videoUrl: p.videoUrl || '',
-                    distance: p.distance,
-                    thumbnail: p.thumbnail
-                }));
+                // Convert DiscoveryProfile to Profile format and filter out admin users as a safeguard
+                const formattedProfiles: Profile[] = feed
+                    .filter(p => {
+                        const name = p.name || '';
+                        const email = (p as any).email || ''; // email might not be in DiscoveryProfile but just in case
+                        return !name.toLowerCase().includes('admin') && !email.toLowerCase().includes('admin');
+                    })
+                    .map(p => ({
+                        id: p.id,
+                        userId: p.userId,
+                        name: p.name,
+                        age: p.age || 0,
+                        bio: p.bio,
+                        videoUrl: p.videoUrl || '',
+                        distance: p.distance,
+                        thumbnail: p.thumbnail
+                    }));
 
                 setProfiles(formattedProfiles);
 
@@ -295,7 +301,7 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, onMatch }) 
                 onOpenProfile={() => onOpenProfile(displayProfile.userId)}
                 onLike={(profile) => handleAction(profile, 'like')}
                 onPass={(profile) => handleAction(profile, 'pass')}
-                onSuperLike={(profile) => handleAction(profile, 'super_like')}
+                onIceBreaker={(profile) => handleAction(profile, 'super_like')}
                 processingAction={processingAction}
                 slideDirection={slideDirection}
                 isTransitioning={isTransitioning}
@@ -312,7 +318,7 @@ interface VideoCardProps {
     onOpenProfile: (userId: string) => void;
     onLike: (profile: Profile) => void;
     onPass: (profile: Profile) => void;
-    onSuperLike: (profile: Profile) => void;
+    onIceBreaker: (profile: Profile) => void;
     processingAction: boolean;
     slideDirection: 'up' | 'down' | 'none';
     isTransitioning: boolean;
@@ -326,7 +332,7 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
     onOpenProfile,
     onLike,
     onPass,
-    onSuperLike,
+    onIceBreaker,
     processingAction,
     slideDirection,
     isTransitioning,
@@ -340,6 +346,7 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
     const [touchEnd, setTouchEnd] = useState<number | null>(null);
     const [translateY, setTranslateY] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
+    const [progress, setProgress] = useState(0);
 
     // Determine animation class based on slide direction
     const getAnimationClass = () => {
@@ -466,6 +473,16 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
         setHasError(false);
     };
 
+    const handleTimeUpdate = () => {
+        if (videoRef.current) {
+            const current = videoRef.current.currentTime;
+            const duration = videoRef.current.duration;
+            if (duration > 0) {
+                setProgress((current / duration) * 100);
+            }
+        }
+    };
+
     const handleTouchStart = (e: React.TouchEvent) => {
         setTouchEnd(null);
         setTouchStart(e.targetTouches[0].clientY);
@@ -588,10 +605,10 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
         }
     };
 
-    const handleSuperLike = (e: React.MouseEvent) => {
+    const handleIceBreaker = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (!processingAction) {
-            onSuperLike(profile);
+            onIceBreaker(profile);
         }
     };
 
@@ -642,7 +659,16 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
                 onLoadedMetadata={handleVideoLoadedMetadata}
                 onError={handleVideoError}
                 onLoadedData={handleVideoLoadedData}
+                onTimeUpdate={handleTimeUpdate}
             />
+
+            {/* Video Progress Bar */}
+            <div className="video-progress-container">
+                <div
+                    className="video-progress-bar"
+                    style={{ width: `${progress}%` }}
+                />
+            </div>
 
             {/* Side Actions Overlay - TikTok Style */}
             <div className="tiktok-actions">
@@ -658,13 +684,13 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
                     </div>
 
                     <div
-                        className={`action-icon-wrapper ${processingAction ? 'disabled' : ''}`}
-                        onClick={handleSuperLike}
+                        className={`action-icon-wrapper ice-breaker-wrapper ${processingAction ? 'disabled' : ''}`}
+                        onClick={handleIceBreaker}
                     >
-                        <div className="icon-circle star-circle">
-                            <Star size={28} fill="#FFD700" stroke="#FFD700" />
+                        <div className="icon-circle ice-breaker-circle">
+                            <Snowflake size={28} fill="white" stroke="white" />
                         </div>
-                        <span>Super</span>
+                        <span className="ice-breaker-text">Ice Breaker</span>
                     </div>
 
                     <div
@@ -672,7 +698,7 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
                         onClick={handlePass}
                     >
                         <div className="icon-circle pass-circle">
-                            <X size={28} stroke="white" />
+                            <X size={32} stroke="white" strokeWidth={3} />
                         </div>
                         <span>Pass</span>
                     </div>

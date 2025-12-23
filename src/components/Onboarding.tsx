@@ -1,9 +1,41 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from 'react';
+// import { motion, AnimatePresence } from 'framer-motion'; // Temporarily disabled for debugging
 import { authService } from '../services/authService';
 import { getMediaBaseUrl } from '../services/apiConfig';
+import { getVideoFileMetadata } from '../utils/mediaUtils';
 import { ChevronRight, ChevronLeft, Camera, Sparkles, Check } from 'lucide-react';
 import './Onboarding.css';
+
+// Add error boundary wrapper to catch any rendering errors
+class OnboardingErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    console.error('Onboarding Error Boundary caught error:', error);
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Onboarding component error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{padding: '20px', color: 'red', textAlign: 'center'}}>
+          <h2>Onboarding Error</h2>
+          <p>There was an error loading the onboarding component. Please refresh the page.</p>
+          <button onClick={() => window.location.reload()}>Refresh Page</button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 interface OnboardingProps {
     token: string;
@@ -16,7 +48,8 @@ const INTERESTS_OPTIONS = [
     'Yoga', 'Pets', 'Nature', 'Tech', 'Fashion', 'Foodie'
 ];
 
-export function Onboarding({ token, onComplete }: OnboardingProps) {
+// Main Onboarding component
+function OnboardingComponent({ token, onComplete }: OnboardingProps) {
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
         name: '',
@@ -33,14 +66,52 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         videos: [] as string[]
     });
     const [uploading, setUploading] = useState<string | null>(null);
+    const [validating, setValidating] = useState<string | null>(null);
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'photo' | 'video') => {
+    // Validate video URL is accessible and playable
+    const validateVideoUrl = (url: string): Promise<boolean> => {
+        return new Promise((resolve) => {
+            try {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.crossOrigin = 'anonymous';
+
+                const timeout = setTimeout(() => {
+                    video.remove();
+                    resolve(false); // Timeout after 10 seconds
+                }, 10000);
+
+                video.onloadedmetadata = () => {
+                    clearTimeout(timeout);
+                    video.remove();
+                    resolve(true); // Video is valid and metadata loaded
+                };
+
+                video.onerror = () => {
+                    clearTimeout(timeout);
+                    video.remove();
+                    resolve(false); // Video failed to load
+                };
+
+                video.src = url;
+            } catch (error) {
+                console.warn('Error creating video element for validation:', error);
+                resolve(false);
+            }
+        });
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'photo' | 'video', retryCount = 0) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Validate file size (50MB limit)
-        if (file.size > 50 * 1024 * 1024) {
-            alert('File size must be less than 50MB');
+        // File size limits: 100MB for video, 20MB for photo
+        const limitMB = type === 'video' ? 100 : 20;
+        const maxSize = limitMB * 1024 * 1024;
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+
+        if (file.size > maxSize) {
+            alert(`File is ${fileSizeMB}MB, which exceeds the ${limitMB}MB limit. Please choose a smaller file.`);
             return;
         }
 
@@ -58,17 +129,108 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
             return;
         }
 
+        // For videos, check duration and inform user about auto-trim
+        if (type === 'video') {
+            try {
+                const metadata = await getVideoFileMetadata(file);
+                if (metadata && metadata.duration && metadata.duration > 30) {
+                    console.log(`Video is ${Math.round(metadata.duration)}s - will be auto-trimmed to 30s`);
+                }
+                console.log(`Video metadata: ${metadata?.duration?.toFixed(1)}s, ${metadata?.width}x${metadata?.height}, ${fileSizeMB}MB`);
+            } catch (err) {
+                console.warn('Could not read video metadata, proceeding with upload:', err);
+            }
+        }
+
         setUploading(type);
+
         try {
-            const { url } = await authService.uploadFile(token, file);
+            // Upload directly - server handles compression via FFmpeg
+            console.log(`Uploading ${type}: ${fileSizeMB}MB`);
+            const uploadResult = await authService.uploadFile(token, file);
+
+            // Check if video processing failed and fell back to original file
+            if (type === 'video' && uploadResult.fallback) {
+                const errorMessage = uploadResult.processingError || 'Video processing failed - using original file which may be large or incompatible.';
+                console.warn('Video upload fallback:', errorMessage);
+
+                // Offer retry for processing failures
+                if (retryCount < 2) {
+                    const retry = confirm(`${errorMessage}\n\nWould you like to retry uploading this file? (${retryCount + 1}/3 attempts)`);
+                    if (retry) {
+                        // Reset the input and try again
+                        e.target.value = '';
+                        setTimeout(() => {
+                            handleFileChange(e, type, retryCount + 1);
+                        }, 100);
+                        return;
+                    }
+                }
+
+                // Show warning but still allow the upload
+                const proceed = confirm(`${errorMessage}\n\nThe video was uploaded but may not play properly or be very large. Do you want to use it anyway?`);
+
+                if (!proceed) {
+                    return; // Don't add the video to the form data
+                }
+            }
+
+            // For videos, validate that the uploaded video is actually playable
+            if (type === 'video') {
+                const fullUrl = `${getMediaBaseUrl()}${uploadResult.url}`;
+                console.log('Validating video URL:', fullUrl);
+
+                setValidating('video');
+                const isValid = await validateVideoUrl(fullUrl);
+                setValidating(null);
+
+                if (!isValid) {
+                    if (retryCount < 2) {
+                        const retry = confirm(`The uploaded video appears to be corrupted or incompatible. Would you like to retry uploading this file? (${retryCount + 1}/3 attempts)`);
+                        if (retry) {
+                            // Reset the input and try again
+                            e.target.value = '';
+                            setTimeout(() => {
+                                handleFileChange(e, type, retryCount + 1);
+                            }, 100);
+                            return;
+                        }
+                    }
+                    alert('The uploaded video appears to be corrupted or incompatible. Please try uploading a different video file.');
+                    return; // Don't add invalid video to form data
+                }
+            }
+
             setFormData(prev => ({
                 ...prev,
-                [type === 'photo' ? 'photos' : 'videos']: [...prev[type === 'photo' ? 'photos' : 'videos'], url]
+                [type === 'photo' ? 'photos' : 'videos']: [...prev[type === 'photo' ? 'photos' : 'videos'], uploadResult.url]
             }));
         } catch (err: any) {
             console.error('Upload failed:', err);
-            const errorMessage = err?.message || 'Upload failed. Please try again.';
-            alert(errorMessage);
+
+            let errorMessage = 'Upload failed. Please try again.';
+            let suggestions = '';
+
+            // Handle specific error types
+            if (err?.message?.includes('413') || err?.message?.includes('too large')) {
+                errorMessage = 'File is too large for upload.';
+                suggestions = 'Try compressing the video or choose a smaller file.';
+            } else if (err?.message?.includes('timeout')) {
+                errorMessage = 'Upload timed out.';
+                suggestions = 'Check your internet connection and try again.';
+            } else if (err?.message?.includes('network') || err?.message?.includes('Failed to fetch')) {
+                errorMessage = 'Network error occurred.';
+                suggestions = 'Check your internet connection and try again.';
+            } else if (err?.message?.includes('FFmpeg') || err?.message?.includes('processing')) {
+                errorMessage = 'Video processing failed.';
+                suggestions = 'Try a different video format or contact support.';
+            } else if (err?.message?.includes('compression')) {
+                errorMessage = 'Video compression failed.';
+                suggestions = 'The original file will be uploaded. Please try again.';
+            }
+
+            const fullMessage = suggestions ? `${errorMessage}\n\n${suggestions}` : errorMessage;
+            alert(fullMessage);
         } finally {
             setUploading(null);
             // Reset the input so the same file can be selected again if needed
@@ -115,11 +277,8 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         switch (step) {
             case 1:
                 return (
-                    <motion.div
+                    <div
                         key="step1"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Nice to meet you. <br />What's your name?</h2>
@@ -146,15 +305,12 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                         <button className="auth-submit-btn" onClick={() => handleUpdate()}>
                             Continue <ChevronRight size={20} />
                         </button>
-                    </motion.div>
+                    </div>
                 );
             case 2:
                 return (
-                    <motion.div
+                    <div
                         key="step2"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Who are you <br />looking for?</h2>
@@ -186,15 +342,12 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                             <button className="back-btn" onClick={prevStep}><ChevronLeft size={24} /></button>
                             <button className="auth-submit-btn" onClick={() => handleUpdate()}>Continue</button>
                         </div>
-                    </motion.div>
+                    </div>
                 );
             case 3:
                 return (
-                    <motion.div
+                    <div
                         key="step3"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">What are you <br />into?</h2>
@@ -217,15 +370,12 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                                 Continue
                             </button>
                         </div>
-                    </motion.div>
+                    </div>
                 );
             case 4:
                 return (
-                    <motion.div
+                    <div
                         key="step4"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Let's break <br />the ice.</h2>
@@ -259,15 +409,12 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                             <button className="back-btn" onClick={prevStep}><ChevronLeft size={24} /></button>
                             <button className="auth-submit-btn" onClick={() => handleUpdate()}>Continue</button>
                         </div>
-                    </motion.div>
+                    </div>
                 );
             case 5:
                 return (
-                    <motion.div
+                    <div
                         key="step5"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Add your <br />best shots.</h2>
@@ -311,6 +458,7 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
 
                         <div className="media-upload-section">
                             <h3>Videos</h3>
+                            <p className="upload-hint">Max 30 seconds • Up to 100MB</p>
                             <div className="photo-grid">
                                 {formData.videos.map((video, i) => (
                                     <div key={i} className="photo-slot has-content">
@@ -331,7 +479,10 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                                     <label
                                         key={`upload-video-${i}`}
                                         className="photo-slot upload-btn"
-                                        style={{ opacity: uploading === 'video' ? 0.6 : 1, pointerEvents: uploading === 'video' ? 'none' : 'auto' }}
+                                        style={{
+                                            opacity: (uploading === 'video' || validating === 'video') ? 0.6 : 1,
+                                            pointerEvents: (uploading === 'video' || validating === 'video') ? 'none' : 'auto'
+                                        }}
                                         onClick={(e) => {
                                             if (uploading === 'video') return;
                                             const input = e.currentTarget.querySelector('input[type="file"]') as HTMLInputElement;
@@ -344,7 +495,19 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                                             onChange={e => handleFileChange(e, 'video')}
                                             style={{ opacity: 0, position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, cursor: 'pointer' }}
                                         />
-                                        {uploading === 'video' ? <div className="spinner"></div> : <Sparkles size={28} />}
+                                        {uploading === 'video' ? (
+                                            <div className="upload-progress">
+                                                <div className="spinner"></div>
+                                                <span className="progress-text">Processing...</span>
+                                            </div>
+                                        ) : validating === 'video' ? (
+                                            <div className="upload-progress">
+                                                <div className="spinner"></div>
+                                                <span className="progress-text">Validating...</span>
+                                            </div>
+                                        ) : (
+                                            <Sparkles size={28} />
+                                        )}
                                     </label>
                                 ))}
                             </div>
@@ -356,31 +519,33 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                                 Finish <Sparkles size={20} />
                             </button>
                         </div>
-                    </motion.div>
+                    </div>
                 );
         }
     };
 
     return (
         <div className="auth-container">
-            <motion.div
-                className="onboarding-card auth-card"
-                layout
-                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            >
+            <div className="onboarding-card auth-card">
                 <div className="progress-header">
                     <div className="progress-bar">
-                        <motion.div
+                        <div
                             className="progress-fill"
-                            animate={{ width: `${(step / 5) * 100}%` }}
-                            transition={{ duration: 0.5, ease: "circOut" }}
+                            style={{ width: `${(step / 5) * 100}%`, transition: 'width 0.5s ease-out' }}
                         />
                     </div>
                 </div>
-                <AnimatePresence mode="wait">
-                    {renderStep()}
-                </AnimatePresence>
-            </motion.div>
+                {renderStep()}
+            </div>
         </div>
+    );
+}
+
+// Export wrapped in error boundary
+export function Onboarding(props: OnboardingProps) {
+    return (
+        <OnboardingErrorBoundary>
+            <OnboardingComponent {...props} />
+        </OnboardingErrorBoundary>
     );
 }

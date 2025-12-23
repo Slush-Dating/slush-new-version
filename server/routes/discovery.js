@@ -59,6 +59,14 @@ router.get('/feed', authenticate, async (req, res) => {
             onboardingCompleted: true
         };
 
+        // Always exclude admin users from discovery feed (admin users are for authentication only)
+        // Check for isAdmin flag, and also as a safeguard, exclude users with 'admin' in name or email
+        query.$and = [
+            { isAdmin: { $ne: true } },
+            { email: { $not: /admin/i } },
+            { name: { $not: /admin/i } }
+        ];
+
         // Debug: Log query details
         const totalUsers = await User.countDocuments({});
         const excludedCount = excludedUserIds.length;
@@ -179,6 +187,14 @@ router.get('/event-partners', authenticate, async (req, res) => {
             _id: { $nin: excludedUserIds.map(id => new mongoose.Types.ObjectId(id)) },
             onboardingCompleted: true
         };
+
+        // Always exclude admin users from discovery feed (admin users are for authentication only)
+        // Check for isAdmin flag, and also as a safeguard, exclude users with 'admin' in name or email
+        query.$and = [
+            { isAdmin: { $ne: true } },
+            { email: { $not: /admin/i } },
+            { name: { $not: /admin/i } }
+        ];
 
         // Apply gender filtering based on event type
         if (eventType === 'straight') {

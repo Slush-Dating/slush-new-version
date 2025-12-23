@@ -11,6 +11,26 @@ import videoProcessor from '../utils/videoProcessor.js';
 import imageProcessor from '../utils/imageProcessor.js';
 
 const router = express.Router();
+
+// Health check endpoint for video processing
+router.get('/health/ffmpeg', async (req, res) => {
+    try {
+        const isAvailable = await videoProcessor.checkFfmpegAvailable();
+        res.json({
+            ffmpeg: {
+                available: isAvailable,
+                version: isAvailable ? 'installed' : 'not installed'
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            ffmpeg: {
+                available: false,
+                error: error.message
+            }
+        });
+    }
+});
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 // Default Placeholders
@@ -40,7 +60,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+    limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit (server handles compression)
     fileFilter: (req, file, cb) => {
         const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
         const validVideoTypes = ['video/mp4', 'video/quicktime', 'video/mov'];
@@ -272,7 +292,7 @@ router.post('/upload', (req, res) => {
             // Handle multer errors
             if (err instanceof multer.MulterError) {
                 if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({ message: 'File size exceeds 50MB limit' });
+                    return res.status(400).json({ message: 'File size exceeds 100MB limit. Please choose a smaller file or trim your video to under 30 seconds.' });
                 }
                 return res.status(400).json({ message: err.message });
             }
@@ -293,24 +313,53 @@ router.post('/upload', (req, res) => {
             let result;
 
             if (isVideo) {
-                // Process video: compress, generate thumbnail, extract metadata
-                console.log(`[Upload] Processing video: ${req.file.filename}`);
-                const processed = await videoProcessor.processVideo(filePath, {
-                    generateQualities: false // Skip quality variants for faster upload
-                });
+                // Check if FFmpeg is available before processing
+                const ffmpegAvailable = await videoProcessor.checkFfmpegAvailable();
+                console.log(`[Upload] FFmpeg available: ${ffmpegAvailable}`);
 
-                result = {
-                    url: processed.compressed.url,
-                    thumbnailUrl: processed.thumbnail.url,
-                    originalUrl: processed.original.url,
-                    duration: processed.metadata.duration,
-                    width: processed.metadata.width,
-                    height: processed.metadata.height,
-                    compressionRatio: processed.metadata.compressionRatio,
-                    type: 'video'
-                };
+                let processed = null;
+                let processingError = null;
 
-                console.log(`[Upload] Video processed: ${processed.metadata.compressionRatio}% compression`);
+                if (ffmpegAvailable) {
+                    try {
+                        // Process video: compress, generate thumbnail, extract metadata
+                        console.log(`[Upload] Processing video: ${req.file.filename}`);
+                        processed = await videoProcessor.processVideo(filePath, {
+                            generateQualities: false // Skip quality variants for faster upload
+                        });
+
+                        result = {
+                            url: processed.compressed.url,
+                            thumbnailUrl: processed.thumbnail.url,
+                            originalUrl: processed.original.url,
+                            duration: processed.metadata.duration,
+                            width: processed.metadata.width,
+                            height: processed.metadata.height,
+                            compressionRatio: processed.metadata.compressionRatio,
+                            type: 'video'
+                        };
+
+                        console.log(`[Upload] Video processed: ${processed.metadata.compressionRatio}% compression`);
+                    } catch (videoError) {
+                        console.error('[Upload] Video processing failed:', videoError);
+                        processingError = videoError.message;
+                        // Continue to fallback handling below
+                    }
+                } else {
+                    console.warn('[Upload] FFmpeg not available, skipping video processing');
+                }
+
+                // If processing failed or FFmpeg not available, use fallback
+                if (!processed) {
+                    console.log('[Upload] Using fallback: returning original video file');
+                    result = {
+                        url: `/uploads/${req.file.filename}`,
+                        type: 'video',
+                        fallback: true,
+                        processingError: processingError || 'FFmpeg not available - using original file',
+                        note: 'Video uploaded successfully but not processed. May be larger than optimized videos.'
+                    };
+                }
 
             } else if (isImage) {
                 // Process image: compress, create variants
@@ -343,13 +392,22 @@ router.post('/upload', (req, res) => {
             res.json(result);
 
         } catch (processingError) {
-            console.error('[Upload] Processing error:', processingError);
+            console.error('[Upload] Unexpected processing error:', processingError);
+            console.error('[Upload] Error details:', {
+                message: processingError.message,
+                stack: processingError.stack,
+                file: req.file.filename,
+                mimeType: mimeType,
+                fileSize: req.file.size
+            });
 
-            // Fall back to returning original file if processing fails
+            // For unexpected errors, still try to return the original file
             res.json({
                 url: `/uploads/${req.file.filename}`,
                 type: isVideo ? 'video' : isImage ? 'image' : 'unknown',
-                processingError: 'Media optimization failed, using original file'
+                processingError: 'Unexpected processing error - using original file',
+                errorType: 'processing_error',
+                fallback: true
             });
         }
     });
@@ -377,14 +435,14 @@ router.post('/admin/login', async (req, res) => {
 
         // Create admin token with admin flag
         const token = jwt.sign({ userId: user._id, isAdmin: true }, JWT_SECRET, { expiresIn: '24h' });
-        res.json({ 
-            token, 
-            user: { 
-                id: user._id, 
-                email: user.email, 
+        res.json({
+            token,
+            user: {
+                id: user._id,
+                email: user.email,
                 name: user.name,
-                isAdmin: true 
-            } 
+                isAdmin: true
+            }
         });
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });

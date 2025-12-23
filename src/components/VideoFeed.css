@@ -1,7 +1,7 @@
 .video-feed-tiktok {
     width: 100%;
     height: 100vh;
-    background: #000;
+    background: var(--bg-offwhite);
     position: relative;
     overflow: hidden;
     touch-action: pan-y;
@@ -42,6 +42,7 @@
         transform: translateY(0);
         opacity: 1;
     }
+
     100% {
         transform: translateY(-100vh);
         opacity: 0;
@@ -53,6 +54,7 @@
         transform: translateY(0);
         opacity: 1;
     }
+
     100% {
         transform: translateY(100vh);
         opacity: 0;
@@ -63,7 +65,7 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    background: #000;
+    background: var(--bg-offwhite);
     position: relative;
     z-index: 6;
 }
@@ -72,7 +74,7 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    background: #000;
+    background: var(--bg-offwhite);
 }
 
 .video-loading {
@@ -82,9 +84,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(248, 249, 250, 0.8);
     z-index: 10;
-    color: white;
+    color: var(--text-primary);
     pointer-events: none;
 }
 
@@ -106,9 +108,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.9);
+    background: var(--bg-offwhite);
     z-index: 15;
-    color: white;
+    color: var(--text-primary);
     gap: 16px;
 }
 
@@ -119,10 +121,10 @@
 
 .video-error button {
     padding: 12px 24px;
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: var(--bg-white);
+    border: 1px solid var(--border-medium);
     border-radius: 8px;
-    color: white;
+    color: var(--text-primary);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -184,10 +186,11 @@
     align-items: center;
     justify-content: center;
     backdrop-filter: blur(10px);
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: var(--bg-white);
+    border: 1px solid var(--border-light);
     cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: var(--shadow-md);
     will-change: transform;
 }
 
@@ -207,15 +210,23 @@
 
 .pass-circle {
     background: rgba(255, 255, 255, 0.15) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    backdrop-filter: blur(8px);
+}
+
+.pass-circle:hover {
+    background: rgba(255, 255, 255, 0.3) !important;
+    border-color: white !important;
 }
 
 .action-icon-wrapper span {
     color: white;
     font-size: 11px;
     font-weight: 700;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 1px 3px rgba(0, 0, 0, 0.9);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
+    margin-top: 4px;
 }
 
 .action-icon-wrapper.disabled {
@@ -227,6 +238,75 @@
 .action-icon-wrapper.disabled .icon-circle {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* Ice Breaker Branding */
+.ice-breaker-circle {
+    background: linear-gradient(135deg, #7DD3FC 0%, #0EA5E9 100%) !important;
+    box-shadow: 0 0 20px rgba(125, 211, 252, 0.4), 0 4px 15px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4) !important;
+    animation: icePulse 3s infinite ease-in-out;
+}
+
+.ice-breaker-circle svg {
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.6));
+}
+
+.action-icon-wrapper span.ice-breaker-text {
+    color: #BAE6FD !important;
+    font-weight: 800;
+    text-shadow: 0 0 10px rgba(125, 211, 252, 0.5), 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+@keyframes icePulse {
+    0% {
+        box-shadow: 0 0 20px rgba(125, 211, 252, 0.4), 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    50% {
+        box-shadow: 0 0 30px rgba(125, 211, 252, 0.7), 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    100% {
+        box-shadow: 0 0 20px rgba(125, 211, 252, 0.4), 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+}
+
+/* Video Progress Bar */
+.video-progress-container {
+    position: absolute;
+    bottom: 0px;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    z-index: 1001;
+}
+
+.video-progress-bar {
+    height: 100%;
+    background: var(--slush-blue);
+    width: 0%;
+    transition: width 0.1s linear;
+    box-shadow: 0 0 8px var(--slush-blue);
+}
+
+/* Micro-animations for actions */
+.action-icon-wrapper:hover .icon-circle {
+    transform: scale(1.1) translateY(-2px);
+}
+
+.action-icon-wrapper:active .icon-circle {
+    transform: scale(0.9) translateY(0);
+}
+
+.like-circle:hover {
+    background: rgba(255, 45, 85, 1) !important;
+    box-shadow: 0 6px 20px rgba(255, 45, 85, 0.6);
+}
+
+.ice-breaker-circle:hover {
+    background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%) !important;
 }
 
 /* Bottom Profile Info - Positioned on the left */
@@ -276,15 +356,18 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     max-width: 90%;
+    opacity: 0.95;
 }
+
+
 
 .tiktok-vignette-bottom {
     position: absolute;
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 300px;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+    height: 400px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 40%, transparent 100%);
     pointer-events: none;
     z-index: 50;
 }

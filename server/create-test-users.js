@@ -1,14 +1,24 @@
-import express from 'express';
+import dotenv from 'dotenv';
+dotenv.config();
+
+import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-import User from '../models/User.js';
+import User from './models/User.js';
 
-const router = express.Router();
+const MONGODB_URI = process.env.MONGODB_URI;
 
-// Seed test users with TikTok videos and profile data
-router.post('/users', async (req, res) => {
+if (!MONGODB_URI) {
+    console.error('❌ MONGODB_URI is not set in environment variables');
+    process.exit(1);
+}
+
+async function createTestUsers() {
     try {
-        // Clear existing test users (optional - comment out if you want to keep existing users)
-        // await User.deleteMany({ email: { $regex: /^test\d+@/ } });
+        console.log('Connecting to MongoDB...');
+        await mongoose.connect(MONGODB_URI);
+        console.log('✅ Connected to MongoDB');
+
+        console.log('\nCreating test users...');
 
         const testUsers = [
             {
@@ -204,40 +214,33 @@ router.post('/users', async (req, res) => {
             if (user) {
                 // Update existing user
                 await User.findByIdAndUpdate(user._id, userData);
+                console.log(`✅ Updated existing user: ${userData.email}`);
                 createdUsers.push(user);
             } else {
                 // Create new user
                 user = new User(userData);
                 await user.save();
+                console.log(`✅ Created new user: ${userData.email}`);
                 createdUsers.push(user);
             }
         }
 
-        res.json({
-            message: `Successfully created/updated ${createdUsers.length} test users`,
-            users: createdUsers.map(u => ({
-                id: u._id,
-                email: u.email,
-                name: u.name
-            }))
+        console.log(`\n✅ Successfully created/updated ${createdUsers.length} test users!`);
+        console.log('\n📋 Test User Credentials:');
+        console.log('   Password for all test users: password123');
+        console.log('\n   Available test accounts:');
+        testUsers.forEach(user => {
+            console.log(`   - ${user.email} (${user.name})`);
         });
-    } catch (err) {
-        console.error('Seed error:', err);
-        res.status(500).json({ message: 'Server error', error: err.message });
+
+        await mongoose.disconnect();
+        process.exit(0);
+    } catch (error) {
+        console.error('❌ Error creating test users:', error);
+        await mongoose.disconnect();
+        process.exit(1);
     }
-});
+}
 
-export default router;
-
-
-
-
-
-
-
-
-
-
-
-
+createTestUsers();
 

@@ -21,10 +21,10 @@
     justify-content: space-around;
     align-items: center;
     padding: 0 20px;
-    padding-bottom: 20px;
-    background: #000 !important;
-    /* Always dark */
-    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+    padding-bottom: 24px;
+    background: var(--bg-white) !important;
+    border-top: 1px solid var(--border-light) !important;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.03);
     z-index: 1000;
 }
 
@@ -33,21 +33,18 @@
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    color: rgba(255, 255, 255, 0.6) !important;
-    /* White icons with opacity */
+    color: var(--text-muted) !important;
     font-size: 11px;
     font-weight: 600;
 }
 
 .nav-item.active {
-    color: #fff !important;
-    /* Solid white for active */
+    color: var(--slush-blue) !important;
 }
 
 .nav-item.active svg {
     transform: translateY(-2px);
-    color: #007AFF;
-    /* Slush blue for active indicator */
+    color: var(--slush-blue);
 }
 
 .nav-item span {

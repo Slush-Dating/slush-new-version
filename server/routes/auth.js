@@ -315,28 +315,51 @@ router.post('/upload', (req, res) => {
             if (isVideo) {
                 // Check if FFmpeg is available before processing
                 const ffmpegAvailable = await videoProcessor.checkFfmpegAvailable();
-                if (!ffmpegAvailable) {
-                    throw new Error('FFmpeg is not available on this server. Video processing cannot be performed.');
+                console.log(`[Upload] FFmpeg available: ${ffmpegAvailable}`);
+
+                let processed = null;
+                let processingError = null;
+
+                if (ffmpegAvailable) {
+                    try {
+                        // Process video: compress, generate thumbnail, extract metadata
+                        console.log(`[Upload] Processing video: ${req.file.filename}`);
+                        processed = await videoProcessor.processVideo(filePath, {
+                            generateQualities: false // Skip quality variants for faster upload
+                        });
+
+                        result = {
+                            url: processed.compressed.url,
+                            thumbnailUrl: processed.thumbnail.url,
+                            originalUrl: processed.original.url,
+                            duration: processed.metadata.duration,
+                            width: processed.metadata.width,
+                            height: processed.metadata.height,
+                            compressionRatio: processed.metadata.compressionRatio,
+                            type: 'video'
+                        };
+
+                        console.log(`[Upload] Video processed: ${processed.metadata.compressionRatio}% compression`);
+                    } catch (videoError) {
+                        console.error('[Upload] Video processing failed:', videoError);
+                        processingError = videoError.message;
+                        // Continue to fallback handling below
+                    }
+                } else {
+                    console.warn('[Upload] FFmpeg not available, skipping video processing');
                 }
 
-                // Process video: compress, generate thumbnail, extract metadata
-                console.log(`[Upload] Processing video: ${req.file.filename}`);
-                const processed = await videoProcessor.processVideo(filePath, {
-                    generateQualities: false // Skip quality variants for faster upload
-                });
-
-                result = {
-                    url: processed.compressed.url,
-                    thumbnailUrl: processed.thumbnail.url,
-                    originalUrl: processed.original.url,
-                    duration: processed.metadata.duration,
-                    width: processed.metadata.width,
-                    height: processed.metadata.height,
-                    compressionRatio: processed.metadata.compressionRatio,
-                    type: 'video'
-                };
-
-                console.log(`[Upload] Video processed: ${processed.metadata.compressionRatio}% compression`);
+                // If processing failed or FFmpeg not available, use fallback
+                if (!processed) {
+                    console.log('[Upload] Using fallback: returning original video file');
+                    result = {
+                        url: `/uploads/${req.file.filename}`,
+                        type: 'video',
+                        fallback: true,
+                        processingError: processingError || 'FFmpeg not available - using original file',
+                        note: 'Video uploaded successfully but not processed. May be larger than optimized videos.'
+                    };
+                }
 
             } else if (isImage) {
                 // Process image: compress, create variants
@@ -369,7 +392,7 @@ router.post('/upload', (req, res) => {
             res.json(result);
 
         } catch (processingError) {
-            console.error('[Upload] Processing error:', processingError);
+            console.error('[Upload] Unexpected processing error:', processingError);
             console.error('[Upload] Error details:', {
                 message: processingError.message,
                 stack: processingError.stack,
@@ -378,27 +401,12 @@ router.post('/upload', (req, res) => {
                 fileSize: req.file.size
             });
 
-            // Check for common issues
-            let errorType = 'unknown';
-            let userMessage = 'Upload failed due to processing error';
-
-            if (processingError.message?.includes('ffmpeg')) {
-                errorType = 'ffmpeg_missing';
-                userMessage = 'Video processing failed - FFmpeg may not be installed on server';
-            } else if (processingError.message?.includes('ENOENT')) {
-                errorType = 'file_not_found';
-                userMessage = 'Uploaded file could not be found for processing';
-            } else if (processingError.message?.includes('timeout')) {
-                errorType = 'processing_timeout';
-                userMessage = 'Video processing timed out - file may be too large';
-            }
-
-            // Fall back to returning original file if processing fails
+            // For unexpected errors, still try to return the original file
             res.json({
                 url: `/uploads/${req.file.filename}`,
                 type: isVideo ? 'video' : isImage ? 'image' : 'unknown',
-                processingError: userMessage,
-                errorType: errorType,
+                processingError: 'Unexpected processing error - using original file',
+                errorType: 'processing_error',
                 fallback: true
             });
         }

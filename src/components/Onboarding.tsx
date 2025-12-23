@@ -103,7 +103,6 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
             alert(fullMessage);
         } finally {
             setUploading(null);
-            setCompressionProgress(null);
             // Reset the input so the same file can be selected again if needed
             e.target.value = '';
         }

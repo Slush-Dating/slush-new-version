@@ -161,7 +161,7 @@
     align-items: center;
     gap: 16px;
     padding: 8px 16px;
-    background: white;
+    background: var(--bg-white);
     border-radius: var(--radius-full);
     border: 1px solid var(--glass-border);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
@@ -535,7 +535,7 @@
 .input-group select:focus,
 .input-group textarea:focus {
     border-color: var(--slush-blue);
-    background: white;
+    background: var(--bg-white);
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.08), 0 8px 24px rgba(59, 130, 246, 0.12);
     transform: translateY(-1px);
 }

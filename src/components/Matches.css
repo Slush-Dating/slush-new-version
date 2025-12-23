@@ -317,6 +317,38 @@
     transform: translateY(-2px) scale(0.98);
 }
 
+.match-card.super-liked {
+    border: 2px solid transparent;
+    background: linear-gradient(var(--bg-white), var(--bg-white)) padding-box,
+                linear-gradient(135deg, var(--slush-blue), var(--slush-purple), var(--slush-pink)) border-box;
+    position: relative;
+}
+
+.match-card.super-liked::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(135deg, var(--slush-blue), var(--slush-purple), var(--slush-pink));
+    border-radius: var(--radius-xl);
+    z-index: -1;
+    opacity: 0.8;
+    animation: slush-glow 3s ease-in-out infinite;
+}
+
+@keyframes slush-glow {
+    0%, 100% {
+        opacity: 0.6;
+        filter: blur(1px);
+    }
+    50% {
+        opacity: 1;
+        filter: blur(2px);
+    }
+}
+
 .match-img {
     width: 100%;
     height: 100%;
@@ -354,6 +386,24 @@
     gap: 6px;
     font-size: 12px;
     opacity: 0.9;
+}
+
+.super-like-indicator {
+    margin-top: 6px;
+}
+
+.super-like-indicator span {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--slush-pink);
+    background: linear-gradient(135deg, var(--slush-blue), var(--slush-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
 }
 
 .online-dot {

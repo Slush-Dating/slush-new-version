@@ -42,6 +42,7 @@ export interface Match {
         location: string;
     } | null;
     isNew: boolean;
+    isSuperLike?: boolean;
     lastMessage?: {
         content: string;
         createdAt: string;
@@ -59,6 +60,17 @@ export interface MatchActionResponse {
         matchedAt: string;
         context: string;
     } | null;
+}
+
+export interface LikedYouUser {
+    id: string;
+    userId: string;
+    name: string;
+    age: number | null;
+    imageUrl: string | null;
+    bio: string;
+    likedAt: string;
+    isSuperLike?: boolean;
 }
 
 export interface MatchStats {

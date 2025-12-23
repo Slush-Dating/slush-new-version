@@ -11,6 +11,26 @@ import videoProcessor from '../utils/videoProcessor.js';
 import imageProcessor from '../utils/imageProcessor.js';
 
 const router = express.Router();
+
+// Health check endpoint for video processing
+router.get('/health/ffmpeg', async (req, res) => {
+    try {
+        const isAvailable = await videoProcessor.checkFfmpegAvailable();
+        res.json({
+            ffmpeg: {
+                available: isAvailable,
+                version: isAvailable ? 'installed' : 'not installed'
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            ffmpeg: {
+                available: false,
+                error: error.message
+            }
+        });
+    }
+});
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 // Default Placeholders
@@ -293,6 +313,12 @@ router.post('/upload', (req, res) => {
             let result;
 
             if (isVideo) {
+                // Check if FFmpeg is available before processing
+                const ffmpegAvailable = await videoProcessor.checkFfmpegAvailable();
+                if (!ffmpegAvailable) {
+                    throw new Error('FFmpeg is not available on this server. Video processing cannot be performed.');
+                }
+
                 // Process video: compress, generate thumbnail, extract metadata
                 console.log(`[Upload] Processing video: ${req.file.filename}`);
                 const processed = await videoProcessor.processVideo(filePath, {
@@ -344,12 +370,36 @@ router.post('/upload', (req, res) => {
 
         } catch (processingError) {
             console.error('[Upload] Processing error:', processingError);
+            console.error('[Upload] Error details:', {
+                message: processingError.message,
+                stack: processingError.stack,
+                file: req.file.filename,
+                mimeType: mimeType,
+                fileSize: req.file.size
+            });
+
+            // Check for common issues
+            let errorType = 'unknown';
+            let userMessage = 'Upload failed due to processing error';
+
+            if (processingError.message?.includes('ffmpeg')) {
+                errorType = 'ffmpeg_missing';
+                userMessage = 'Video processing failed - FFmpeg may not be installed on server';
+            } else if (processingError.message?.includes('ENOENT')) {
+                errorType = 'file_not_found';
+                userMessage = 'Uploaded file could not be found for processing';
+            } else if (processingError.message?.includes('timeout')) {
+                errorType = 'processing_timeout';
+                userMessage = 'Video processing timed out - file may be too large';
+            }
 
             // Fall back to returning original file if processing fails
             res.json({
                 url: `/uploads/${req.file.filename}`,
                 type: isVideo ? 'video' : isImage ? 'image' : 'unknown',
-                processingError: 'Media optimization failed, using original file'
+                processingError: userMessage,
+                errorType: errorType,
+                fallback: true
             });
         }
     });

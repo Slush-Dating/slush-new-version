@@ -130,13 +130,29 @@ export const authService = {
 
         if (!response.ok) {
             let errorMessage = 'Upload failed';
+            let errorType = 'unknown';
             try {
                 const error = await response.json();
                 errorMessage = error.message || errorMessage;
+                errorType = error.errorType || errorType;
             } catch (e) {
                 // If response is not JSON, use status text
                 errorMessage = response.statusText || errorMessage;
             }
+
+            // Provide user-friendly messages for common errors
+            if (errorType === 'ffmpeg_missing') {
+                errorMessage = 'Video processing is not available on this server. Please contact support.';
+            } else if (errorType === 'processing_timeout') {
+                errorMessage = 'Video upload timed out. Please try with a smaller video file.';
+            } else if (errorType === 'file_not_found') {
+                errorMessage = 'Upload failed - file could not be processed. Please try again.';
+            } else if (response.status === 413) {
+                errorMessage = 'File is too large. Please choose a file smaller than 50MB.';
+            } else if (response.status === 401) {
+                errorMessage = 'Authentication failed. Please log in again.';
+            }
+
             throw new Error(errorMessage);
         }
 

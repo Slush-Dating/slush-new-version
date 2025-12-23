@@ -369,6 +369,13 @@ select.auth-input option {
     margin-bottom: 16px;
 }
 
+.upload-hint {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: -8px 0 16px 0;
+    font-weight: 500;
+}
+
 /* Spinner for uploads */
 .spinner {
     width: 28px;
@@ -377,6 +384,20 @@ select.auth-input option {
     border-top: 3px solid var(--slush-blue);
     border-radius: 50%;
     animation: spin 1s linear infinite;
+}
+
+.upload-progress {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.progress-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-align: center;
 }
 
 @keyframes spin {

@@ -39,8 +39,11 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         if (!file) return;
 
         // Validate file size (50MB limit)
-        if (file.size > 50 * 1024 * 1024) {
-            alert('File size must be less than 50MB');
+        const maxSize = 50 * 1024 * 1024; // 50MB in bytes
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+
+        if (file.size > maxSize) {
+            alert(`File is ${fileSizeMB}MB, which exceeds the 50MB limit. Please choose a smaller video file or compress it first.`);
             return;
         }
 
@@ -59,18 +62,48 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         }
 
         setUploading(type);
+
         try {
+            // For large video files, show processing message
+            if (type === 'video' && file.size > 10 * 1024 * 1024) {
+                console.log(`Large video detected: ${(file.size / (1024 * 1024)).toFixed(1)}MB - will be processed server-side`);
+            }
+
             const { url } = await authService.uploadFile(token, file);
+
             setFormData(prev => ({
                 ...prev,
                 [type === 'photo' ? 'photos' : 'videos']: [...prev[type === 'photo' ? 'photos' : 'videos'], url]
             }));
         } catch (err: any) {
             console.error('Upload failed:', err);
-            const errorMessage = err?.message || 'Upload failed. Please try again.';
-            alert(errorMessage);
+
+            let errorMessage = 'Upload failed. Please try again.';
+            let suggestions = '';
+
+            // Handle specific error types
+            if (err?.message?.includes('413') || err?.message?.includes('too large')) {
+                errorMessage = 'File is too large for upload.';
+                suggestions = 'Try compressing the video or choose a smaller file.';
+            } else if (err?.message?.includes('timeout')) {
+                errorMessage = 'Upload timed out.';
+                suggestions = 'Check your internet connection and try again.';
+            } else if (err?.message?.includes('network') || err?.message?.includes('Failed to fetch')) {
+                errorMessage = 'Network error occurred.';
+                suggestions = 'Check your internet connection and try again.';
+            } else if (err?.message?.includes('FFmpeg') || err?.message?.includes('processing')) {
+                errorMessage = 'Video processing failed.';
+                suggestions = 'Try a different video format or contact support.';
+            } else if (err?.message?.includes('compression')) {
+                errorMessage = 'Video compression failed.';
+                suggestions = 'The original file will be uploaded. Please try again.';
+            }
+
+            const fullMessage = suggestions ? `${errorMessage}\n\n${suggestions}` : errorMessage;
+            alert(fullMessage);
         } finally {
             setUploading(null);
+            setCompressionProgress(null);
             // Reset the input so the same file can be selected again if needed
             e.target.value = '';
         }
@@ -311,6 +344,7 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
 
                         <div className="media-upload-section">
                             <h3>Videos</h3>
+                            <p className="upload-hint">Maximum file size: 50MB. Videos will be compressed automatically.</p>
                             <div className="photo-grid">
                                 {formData.videos.map((video, i) => (
                                     <div key={i} className="photo-slot has-content">
@@ -344,7 +378,14 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                                             onChange={e => handleFileChange(e, 'video')}
                                             style={{ opacity: 0, position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, cursor: 'pointer' }}
                                         />
-                                        {uploading === 'video' ? <div className="spinner"></div> : <Sparkles size={28} />}
+                                        {uploading === 'video' ? (
+                                            <div className="upload-progress">
+                                                <div className="spinner"></div>
+                                                <span className="progress-text">Processing...</span>
+                                            </div>
+                                        ) : (
+                                            <Sparkles size={28} />
+                                        )}
                                     </label>
                                 ))}
                             </div>

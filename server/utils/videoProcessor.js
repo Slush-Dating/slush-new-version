@@ -129,15 +129,18 @@ export const generateThumbnail = (inputPath, outputPath, timestamp = '00:00:01')
 
 /**
  * Compress video with optimized settings for mobile streaming
+ * Auto-trims to 30 seconds max for dating app UX
  */
 export const compressVideo = (inputPath, outputPath, options = {}) => {
     return new Promise((resolve, reject) => {
         const settings = { ...DEFAULT_SETTINGS, ...options };
+        const maxDuration = options.maxDuration || 30; // 30 seconds max
 
-        console.log(`[VideoProcessor] Compressing video: ${inputPath}`);
+        console.log(`[VideoProcessor] Compressing video: ${inputPath} (max ${maxDuration}s)`);
         const startTime = Date.now();
 
         ffmpeg(inputPath)
+            .duration(maxDuration) // Auto-trim to 30 seconds
             .videoCodec(settings.codec)
             .addOption('-crf', settings.crf.toString())
             .addOption('-preset', settings.preset)

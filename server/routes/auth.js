@@ -60,7 +60,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 50 * 1024 * 1024 }, // Increased to 50MB limit
+    limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit (server handles compression)
     fileFilter: (req, file, cb) => {
         const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
         const validVideoTypes = ['video/mp4', 'video/quicktime', 'video/mov'];
@@ -292,7 +292,7 @@ router.post('/upload', (req, res) => {
             // Handle multer errors
             if (err instanceof multer.MulterError) {
                 if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({ message: 'File size exceeds 50MB limit. Please compress your video or choose a smaller file.' });
+                    return res.status(400).json({ message: 'File size exceeds 100MB limit. Please choose a smaller file or trim your video to under 30 seconds.' });
                 }
                 return res.status(400).json({ message: err.message });
             }

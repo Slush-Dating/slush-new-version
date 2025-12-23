@@ -1,10 +1,41 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from 'react';
+// import { motion, AnimatePresence } from 'framer-motion'; // Temporarily disabled for debugging
 import { authService } from '../services/authService';
 import { getMediaBaseUrl } from '../services/apiConfig';
-import { compressVideoClient } from '../utils/mediaUtils';
+import { getVideoFileMetadata } from '../utils/mediaUtils';
 import { ChevronRight, ChevronLeft, Camera, Sparkles, Check } from 'lucide-react';
 import './Onboarding.css';
+
+// Add error boundary wrapper to catch any rendering errors
+class OnboardingErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    console.error('Onboarding Error Boundary caught error:', error);
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Onboarding component error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{padding: '20px', color: 'red', textAlign: 'center'}}>
+          <h2>Onboarding Error</h2>
+          <p>There was an error loading the onboarding component. Please refresh the page.</p>
+          <button onClick={() => window.location.reload()}>Refresh Page</button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 interface OnboardingProps {
     token: string;
@@ -17,7 +48,8 @@ const INTERESTS_OPTIONS = [
     'Yoga', 'Pets', 'Nature', 'Tech', 'Fashion', 'Foodie'
 ];
 
-export function Onboarding({ token, onComplete }: OnboardingProps) {
+// Main Onboarding component
+function OnboardingComponent({ token, onComplete }: OnboardingProps) {
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
         name: '',
@@ -39,28 +71,33 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
     // Validate video URL is accessible and playable
     const validateVideoUrl = (url: string): Promise<boolean> => {
         return new Promise((resolve) => {
-            const video = document.createElement('video');
-            video.preload = 'metadata';
-            video.crossOrigin = 'anonymous';
+            try {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.crossOrigin = 'anonymous';
 
-            const timeout = setTimeout(() => {
-                video.remove();
-                resolve(false); // Timeout after 10 seconds
-            }, 10000);
+                const timeout = setTimeout(() => {
+                    video.remove();
+                    resolve(false); // Timeout after 10 seconds
+                }, 10000);
 
-            video.onloadedmetadata = () => {
-                clearTimeout(timeout);
-                video.remove();
-                resolve(true); // Video is valid and metadata loaded
-            };
+                video.onloadedmetadata = () => {
+                    clearTimeout(timeout);
+                    video.remove();
+                    resolve(true); // Video is valid and metadata loaded
+                };
 
-            video.onerror = () => {
-                clearTimeout(timeout);
-                video.remove();
-                resolve(false); // Video failed to load
-            };
+                video.onerror = () => {
+                    clearTimeout(timeout);
+                    video.remove();
+                    resolve(false); // Video failed to load
+                };
 
-            video.src = url;
+                video.src = url;
+            } catch (error) {
+                console.warn('Error creating video element for validation:', error);
+                resolve(false);
+            }
         });
     };
 
@@ -68,8 +105,8 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Validate file size
-        const limitMB = type === 'video' ? 200 : 20; // Allow larger videos for compression
+        // File size limits: 100MB for video, 20MB for photo
+        const limitMB = type === 'video' ? 100 : 20;
         const maxSize = limitMB * 1024 * 1024;
         const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
 
@@ -92,39 +129,25 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
             return;
         }
 
+        // For videos, check duration and inform user about auto-trim
+        if (type === 'video') {
+            try {
+                const metadata = await getVideoFileMetadata(file);
+                if (metadata && metadata.duration && metadata.duration > 30) {
+                    console.log(`Video is ${Math.round(metadata.duration)}s - will be auto-trimmed to 30s`);
+                }
+                console.log(`Video metadata: ${metadata?.duration?.toFixed(1)}s, ${metadata?.width}x${metadata?.height}, ${fileSizeMB}MB`);
+            } catch (err) {
+                console.warn('Could not read video metadata, proceeding with upload:', err);
+            }
+        }
+
         setUploading(type);
 
         try {
-            let fileToUpload = file;
-
-            // Compress videos before uploading
-            if (type === 'video') {
-                console.log(`Processing video: ${(file.size / (1024 * 1024)).toFixed(1)}MB`);
-
-                // Compress video to reduce size before upload
-                const compressedFile = await compressVideoClient(file, {
-                    onProgress: (progress) => {
-                        console.log(`Compression progress: ${progress}%`);
-                    }
-                });
-
-                if (compressedFile !== file) {
-                    const compressionRatio = ((file.size - compressedFile.size) / file.size * 100).toFixed(1);
-                    console.log(`Video compressed: ${(file.size / (1024 * 1024)).toFixed(1)}MB → ${(compressedFile.size / (1024 * 1024)).toFixed(1)}MB (${compressionRatio}% reduction)`);
-                    fileToUpload = compressedFile;
-                } else {
-                    console.log('Video compression skipped or not effective');
-                }
-
-                // Check final size after compression (50MB limit)
-                if (fileToUpload.size > 50 * 1024 * 1024) {
-                    alert(`Even after compression, the video is ${(fileToUpload.size / (1024 * 1024)).toFixed(1)}MB, which exceeds the 50MB limit. Please choose a shorter or smaller video file.`);
-                    return;
-                }
-            }
-
-
-            const uploadResult = await authService.uploadFile(token, fileToUpload);
+            // Upload directly - server handles compression via FFmpeg
+            console.log(`Uploading ${type}: ${fileSizeMB}MB`);
+            const uploadResult = await authService.uploadFile(token, file);
 
             // Check if video processing failed and fell back to original file
             if (type === 'video' && uploadResult.fallback) {
@@ -254,11 +277,8 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         switch (step) {
             case 1:
                 return (
-                    <motion.div
+                    <div
                         key="step1"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Nice to meet you. <br />What's your name?</h2>
@@ -285,15 +305,12 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                         <button className="auth-submit-btn" onClick={() => handleUpdate()}>
                             Continue <ChevronRight size={20} />
                         </button>
-                    </motion.div>
+                    </div>
                 );
             case 2:
                 return (
-                    <motion.div
+                    <div
                         key="step2"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Who are you <br />looking for?</h2>
@@ -325,15 +342,12 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                             <button className="back-btn" onClick={prevStep}><ChevronLeft size={24} /></button>
                             <button className="auth-submit-btn" onClick={() => handleUpdate()}>Continue</button>
                         </div>
-                    </motion.div>
+                    </div>
                 );
             case 3:
                 return (
-                    <motion.div
+                    <div
                         key="step3"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">What are you <br />into?</h2>
@@ -356,15 +370,12 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                                 Continue
                             </button>
                         </div>
-                    </motion.div>
+                    </div>
                 );
             case 4:
                 return (
-                    <motion.div
+                    <div
                         key="step4"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Let's break <br />the ice.</h2>
@@ -398,15 +409,12 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                             <button className="back-btn" onClick={prevStep}><ChevronLeft size={24} /></button>
                             <button className="auth-submit-btn" onClick={() => handleUpdate()}>Continue</button>
                         </div>
-                    </motion.div>
+                    </div>
                 );
             case 5:
                 return (
-                    <motion.div
+                    <div
                         key="step5"
-                        initial={{ opacity: 0, x: 30 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -30 }}
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Add your <br />best shots.</h2>
@@ -450,7 +458,7 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
 
                         <div className="media-upload-section">
                             <h3>Videos</h3>
-                            <p className="upload-hint">Maximum file size: 50MB. Videos will be compressed automatically.</p>
+                            <p className="upload-hint">Max 30 seconds • Up to 100MB</p>
                             <div className="photo-grid">
                                 {formData.videos.map((video, i) => (
                                     <div key={i} className="photo-slot has-content">
@@ -511,31 +519,33 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                                 Finish <Sparkles size={20} />
                             </button>
                         </div>
-                    </motion.div>
+                    </div>
                 );
         }
     };
 
     return (
         <div className="auth-container">
-            <motion.div
-                className="onboarding-card auth-card"
-                layout
-                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            >
+            <div className="onboarding-card auth-card">
                 <div className="progress-header">
                     <div className="progress-bar">
-                        <motion.div
+                        <div
                             className="progress-fill"
-                            animate={{ width: `${(step / 5) * 100}%` }}
-                            transition={{ duration: 0.5, ease: "circOut" }}
+                            style={{ width: `${(step / 5) * 100}%`, transition: 'width 0.5s ease-out' }}
                         />
                     </div>
                 </div>
-                <AnimatePresence mode="wait">
-                    {renderStep()}
-                </AnimatePresence>
-            </motion.div>
+                {renderStep()}
+            </div>
         </div>
+    );
+}
+
+// Export wrapped in error boundary
+export function Onboarding(props: OnboardingProps) {
+    return (
+        <OnboardingErrorBoundary>
+            <OnboardingComponent {...props} />
+        </OnboardingErrorBoundary>
     );
 }

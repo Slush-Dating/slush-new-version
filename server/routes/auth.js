@@ -60,7 +60,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB limit
+    limits: { fileSize: 50 * 1024 * 1024 }, // Increased to 50MB limit
     fileFilter: (req, file, cb) => {
         const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
         const validVideoTypes = ['video/mp4', 'video/quicktime', 'video/mov'];
@@ -292,7 +292,7 @@ router.post('/upload', (req, res) => {
             // Handle multer errors
             if (err instanceof multer.MulterError) {
                 if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({ message: 'File size exceeds 20MB limit. Please compress your video or choose a smaller file.' });
+                    return res.status(400).json({ message: 'File size exceeds 50MB limit. Please compress your video or choose a smaller file.' });
                 }
                 return res.status(400).json({ message: err.message });
             }
@@ -435,14 +435,14 @@ router.post('/admin/login', async (req, res) => {
 
         // Create admin token with admin flag
         const token = jwt.sign({ userId: user._id, isAdmin: true }, JWT_SECRET, { expiresIn: '24h' });
-        res.json({ 
-            token, 
-            user: { 
-                id: user._id, 
-                email: user.email, 
+        res.json({
+            token,
+            user: {
+                id: user._id,
+                email: user.email,
                 name: user.name,
-                isAdmin: true 
-            } 
+                isAdmin: true
+            }
         });
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });

@@ -68,12 +68,13 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Validate file size (20MB limit)
-        const maxSize = 20 * 1024 * 1024; // 20MB in bytes
+        // Validate file size
+        const limitMB = type === 'video' ? 200 : 20; // Allow larger videos for compression
+        const maxSize = limitMB * 1024 * 1024;
         const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
 
         if (file.size > maxSize) {
-            alert(`File is ${fileSizeMB}MB, which exceeds the 20MB limit. Videos will be compressed automatically. Please choose a smaller file if compression doesn't reduce it enough.`);
+            alert(`File is ${fileSizeMB}MB, which exceeds the ${limitMB}MB limit. Please choose a smaller file.`);
             return;
         }
 
@@ -111,16 +112,17 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
                     const compressionRatio = ((file.size - compressedFile.size) / file.size * 100).toFixed(1);
                     console.log(`Video compressed: ${(file.size / (1024 * 1024)).toFixed(1)}MB → ${(compressedFile.size / (1024 * 1024)).toFixed(1)}MB (${compressionRatio}% reduction)`);
                     fileToUpload = compressedFile;
-
-                    // Check if compressed file is still over 20MB
-                    if (compressedFile.size > 20 * 1024 * 1024) {
-                        alert(`Even after compression, the video is ${(compressedFile.size / (1024 * 1024)).toFixed(1)}MB, which exceeds the 20MB limit. Please choose a shorter or smaller video file.`);
-                        return;
-                    }
                 } else {
                     console.log('Video compression skipped or not effective');
                 }
+
+                // Check final size after compression (50MB limit)
+                if (fileToUpload.size > 50 * 1024 * 1024) {
+                    alert(`Even after compression, the video is ${(fileToUpload.size / (1024 * 1024)).toFixed(1)}MB, which exceeds the 50MB limit. Please choose a shorter or smaller video file.`);
+                    return;
+                }
             }
+
 
             const uploadResult = await authService.uploadFile(token, fileToUpload);
 
@@ -448,7 +450,7 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
 
                         <div className="media-upload-section">
                             <h3>Videos</h3>
-                            <p className="upload-hint">Maximum file size: 20MB. Videos will be compressed automatically.</p>
+                            <p className="upload-hint">Maximum file size: 50MB. Videos will be compressed automatically.</p>
                             <div className="photo-grid">
                                 {formData.videos.map((video, i) => (
                                     <div key={i} className="photo-slot has-content">

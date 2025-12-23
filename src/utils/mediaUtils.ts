@@ -238,12 +238,12 @@ export const compressVideoClient = async (
 
     // Check if file is already small enough to skip compression
     const originalSizeMB = file.size / (1024 * 1024);
-    if (originalSizeMB <= 10) { // Skip compression for files under 10MB
+    if (originalSizeMB <= 5) { // Skip compression for files under 5MB
         return file;
     }
 
     try {
-        // Skip compression for very small files
+        // Double check threshold (redundant but safe)
         if (originalSizeMB <= 5) {
             console.log('Video is small enough, skipping compression');
             return file;

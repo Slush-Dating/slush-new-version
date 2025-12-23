@@ -10,16 +10,16 @@ export const authService = {
         console.log('🔗 Register API URL:', fullUrl);
         console.log('📍 Current hostname:', window.location.hostname);
         console.log('📍 Current protocol:', window.location.protocol);
-        
+
         try {
             const response = await fetch(fullUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
             });
-            
+
             console.log('📡 Register response status:', response.status, response.statusText);
-            
+
             if (!response.ok) {
                 let error;
                 try {
@@ -57,16 +57,16 @@ export const authService = {
         console.log('🔗 Login API URL:', fullUrl);
         console.log('📍 Current hostname:', window.location.hostname);
         console.log('📍 Current protocol:', window.location.protocol);
-        
+
         try {
             const response = await fetch(fullUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
             });
-            
+
             console.log('📡 Login response status:', response.status, response.statusText);
-            
+
             if (!response.ok) {
                 let error;
                 try {
@@ -148,7 +148,7 @@ export const authService = {
             } else if (errorType === 'file_not_found') {
                 errorMessage = 'Upload failed - file could not be processed. Please try again.';
             } else if (response.status === 413) {
-                errorMessage = 'File is too large. Please choose a file smaller than 20MB or wait for compression to complete.';
+                errorMessage = 'File is too large. Please choose a file smaller than 50MB or wait for compression to complete.';
             } else if (response.status === 401) {
                 errorMessage = 'Authentication failed. Please log in again.';
             }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authService } from '../services/authService';
 import { getMediaBaseUrl } from '../services/apiConfig';
+import { compressVideoClient } from '../utils/mediaUtils';
 import { ChevronRight, ChevronLeft, Camera, Sparkles, Check } from 'lucide-react';
 import './Onboarding.css';
 
@@ -67,12 +68,12 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Validate file size (50MB limit)
-        const maxSize = 50 * 1024 * 1024; // 50MB in bytes
+        // Validate file size (20MB limit)
+        const maxSize = 20 * 1024 * 1024; // 20MB in bytes
         const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
 
         if (file.size > maxSize) {
-            alert(`File is ${fileSizeMB}MB, which exceeds the 50MB limit. Please choose a smaller video file or compress it first.`);
+            alert(`File is ${fileSizeMB}MB, which exceeds the 20MB limit. Videos will be compressed automatically. Please choose a smaller file if compression doesn't reduce it enough.`);
             return;
         }
 
@@ -93,12 +94,35 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
         setUploading(type);
 
         try {
-            // For large video files, show processing message
-            if (type === 'video' && file.size > 10 * 1024 * 1024) {
-                console.log(`Large video detected: ${(file.size / (1024 * 1024)).toFixed(1)}MB - will be processed server-side`);
+            let fileToUpload = file;
+
+            // Compress videos before uploading
+            if (type === 'video') {
+                console.log(`Processing video: ${(file.size / (1024 * 1024)).toFixed(1)}MB`);
+
+                // Compress video to reduce size before upload
+                const compressedFile = await compressVideoClient(file, {
+                    onProgress: (progress) => {
+                        console.log(`Compression progress: ${progress}%`);
+                    }
+                });
+
+                if (compressedFile !== file) {
+                    const compressionRatio = ((file.size - compressedFile.size) / file.size * 100).toFixed(1);
+                    console.log(`Video compressed: ${(file.size / (1024 * 1024)).toFixed(1)}MB → ${(compressedFile.size / (1024 * 1024)).toFixed(1)}MB (${compressionRatio}% reduction)`);
+                    fileToUpload = compressedFile;
+
+                    // Check if compressed file is still over 20MB
+                    if (compressedFile.size > 20 * 1024 * 1024) {
+                        alert(`Even after compression, the video is ${(compressedFile.size / (1024 * 1024)).toFixed(1)}MB, which exceeds the 20MB limit. Please choose a shorter or smaller video file.`);
+                        return;
+                    }
+                } else {
+                    console.log('Video compression skipped or not effective');
+                }
             }
 
-            const uploadResult = await authService.uploadFile(token, file);
+            const uploadResult = await authService.uploadFile(token, fileToUpload);
 
             // Check if video processing failed and fell back to original file
             if (type === 'video' && uploadResult.fallback) {
@@ -424,7 +448,7 @@ export function Onboarding({ token, onComplete }: OnboardingProps) {
 
                         <div className="media-upload-section">
                             <h3>Videos</h3>
-                            <p className="upload-hint">Maximum file size: 50MB. Videos will be compressed automatically.</p>
+                            <p className="upload-hint">Maximum file size: 20MB. Videos will be compressed automatically.</p>
                             <div className="photo-grid">
                                 {formData.videos.map((video, i) => (
                                     <div key={i} className="photo-slot has-content">

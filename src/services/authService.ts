@@ -148,7 +148,7 @@ export const authService = {
             } else if (errorType === 'file_not_found') {
                 errorMessage = 'Upload failed - file could not be processed. Please try again.';
             } else if (response.status === 413) {
-                errorMessage = 'File is too large. Please choose a file smaller than 50MB.';
+                errorMessage = 'File is too large. Please choose a file smaller than 20MB or wait for compression to complete.';
             } else if (response.status === 401) {
                 errorMessage = 'Authentication failed. Please log in again.';
             }

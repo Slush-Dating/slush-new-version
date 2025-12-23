@@ -273,12 +273,46 @@ node clear-matches.js
 Kill all servers:
 pkill -f node
 
-When ready for IPA
-1. Open Xcode on your Mac (not via SSH)
-2. Go to Xcode → Settings → Accounts tab
-3. Add your Apple ID: khalil.kirkwood@hotmail.co.uk
-4. Sign in with your Apple Developer password
-5. Once authenticated, Xcode will be able to create the necessary provisioning profiles
+## 📱 iOS IPA Build Process (Latest Staging Code)
+
+### Automated Build (Recommended)
+```bash
+# Build iOS with latest staging code (ensures develop branch)
+npm run build:ios:staging
+```
+
+This script automatically:
+- Switches to `develop` branch and pulls latest changes
+- Builds React app with staging configuration
+- Syncs with Capacitor iOS using staging.slushdating.com
+- Opens Xcode ready for archiving
+
+### Manual Xcode Steps
+1. **Open Xcode on your Mac** (not via SSH)
+2. **Sign in to Apple Developer Account**:
+   - Xcode → Settings → Accounts tab
+   - Add Apple ID: `khalil.kirkwood@hotmail.co.uk`
+   - Sign in with your Apple Developer password
+3. **Create Archive**:
+   - Select 'App' target
+   - Product → Archive
+   - Wait for archive to complete
+4. **Distribute to App Store Connect**:
+   - Click 'Distribute App'
+   - Choose 'App Store Connect' → 'Upload'
+   - Select your development team
+   - Upload to App Store Connect
+
+### GitHub Actions (CI/CD)
+- **Automatic**: Every push to `develop` branch builds iOS (but doesn't create IPA)
+- **Manual IPA**: Go to GitHub Actions → "Build iOS Staging" → "Run workflow" → Enable "Build IPA"
+- **Result**: IPA artifact is created and available for download/TestFlight upload
+
+### Important Notes
+- ✅ **Always uses staging code** from `develop` branch
+- 🌐 **Connects to**: `staging.slushdating.com`
+- 📊 **Uses**: Staging database and environment
+- 🚀 **Ready for**: TestFlight and App Store Connect
 
 db user:
 

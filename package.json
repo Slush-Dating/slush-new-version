@@ -20,6 +20,8 @@
     "cap:ios:prod": "npm run build:production && CAPACITOR_HOSTNAME=app.slushdating.com npx cap sync ios && npx cap open ios",
     "cap:android:staging": "npm run build:staging && CAPACITOR_HOSTNAME=staging.slushdating.com npx cap sync android && npx cap open android",
     "cap:android:prod": "npm run build:production && CAPACITOR_HOSTNAME=app.slushdating.com npx cap sync android && npx cap open android",
+    "build:ios:staging": "./build-ios-staging.sh",
+    "staging:full": "git checkout develop && git pull origin develop && npm run build:ios:staging",
     "deploy:staging": "./deploy/deploy-staging.sh",
     "deploy:production": "./deploy/deploy-production.sh"
   },

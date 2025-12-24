@@ -34,7 +34,6 @@ class SocketService {
                     isDev: import.meta.env.DEV
                 });
                 this.socket = io(socketUrl, {
-                    transports: ['websocket', 'polling'],
                     reconnection: true,
                     reconnectionDelay: 1000,
                     reconnectionAttempts: 5,

@@ -2,21 +2,26 @@
   "name": "slush-dating-workspace",
   "private": true,
   "workspaces": [
-    "web",
-    "server"
+    "apps/web",
+    "apps/native",
+    "packages/server"
   ],
   "scripts": {
-    "build:staging": "npm run build:staging -w web",
-    "web:dev": "npm run dev -w web",
-    "web:build": "npm run build -w web",
-    "web:build:staging": "npm run build:staging -w web",
-    "web:cap:ios:staging": "npm run cap:ios:staging -w web",
-    "web:cap:android:staging": "npm run cap:android:staging -w web",
-    "web:build:ios:staging": "npm run build:ios:staging -w web",
-    "native:start": "cd native && npm run start",
-    "native:ios": "cd native && npm run ios",
-    "native:android": "cd native && npm run android",
-    "server:dev": "npm run dev -w server",
-    "install:all": "npm install && cd native && npm install"
+    "build:staging": "npm run build:staging -w apps/web",
+    "web:dev": "npm run dev -w apps/web",
+    "web:build": "npm run build -w apps/web",
+    "web:build:staging": "npm run build:staging -w apps/web",
+    "web:cap:ios:staging": "npm run cap:ios:staging -w apps/web",
+    "web:cap:android:staging": "npm run cap:android:staging -w apps/web",
+    "web:build:ios:staging": "npm run build:ios:staging -w apps/web",
+    "native:start": "npm run start -w apps/native",
+    "native:ios": "npm run ios -w apps/native",
+    "native:android": "npm run android -w apps/native",
+    "native:build:dev": "cd apps/native && eas build --profile development",
+    "native:build:staging": "cd apps/native && eas build --profile preview",
+    "native:build:prod": "cd apps/native && eas build --profile production",
+    "server:dev": "npm run dev -w packages/server",
+    "install:all": "npm install",
+    "create:branch": "node -e \"const [,,type,component,name] = process.argv; const branch = \`\${type}/\${component}-\${name}\`; console.log(\`Creating branch: \${branch}\`); process.exit(0);\""
   }
 }

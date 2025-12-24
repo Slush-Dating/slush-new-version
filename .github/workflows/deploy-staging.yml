@@ -25,59 +25,69 @@ jobs:
         run: npm ci
 
       - name: Build React app for staging
+        if: steps.changed-components.outputs.web_changed == 'true'
         run: npm run build:staging
         env:
           VITE_ENV: staging
 
-      - name: Check if server code changed
-        id: server-changed
+      - name: Check what components changed
+        id: changed-components
         run: |
+          echo "web_changed=false" >> $GITHUB_OUTPUT
+          echo "server_changed=false" >> $GITHUB_OUTPUT
+          echo "native_changed=false" >> $GITHUB_OUTPUT
+
           if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
-            # First push - check if server directory exists
-            if [ -d "server" ]; then
-              echo "changed=true" >> $GITHUB_OUTPUT
-            else
-              echo "changed=false" >> $GITHUB_OUTPUT
-            fi
+            # First push - check if directories exist
+            if [ -d "apps/web" ]; then echo "web_changed=true" >> $GITHUB_OUTPUT; fi
+            if [ -d "packages/server" ]; then echo "server_changed=true" >> $GITHUB_OUTPUT; fi
+            if [ -d "apps/native" ]; then echo "native_changed=true" >> $GITHUB_OUTPUT; fi
           else
-            if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "^server/"; then
-              echo "changed=true" >> $GITHUB_OUTPUT
-            else
-              echo "changed=false" >> $GITHUB_OUTPUT
+            # Check what changed in this commit
+            if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "^apps/web/"; then
+              echo "web_changed=true" >> $GITHUB_OUTPUT
+            fi
+            if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "^packages/server/"; then
+              echo "server_changed=true" >> $GITHUB_OUTPUT
+            fi
+            if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "^apps/native/"; then
+              echo "native_changed=true" >> $GITHUB_OUTPUT
             fi
           fi
 
       - name: Deploy nginx configs to VPS
+        if: steps.changed-components.outputs.web_changed == 'true' || steps.changed-components.outputs.server_changed == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
-          source: "nginx-config-staging-slushdating-com.conf"
+          source: "apps/web/nginx-config-staging-slushdating-com.conf"
           target: "/tmp/"
 
       - name: Deploy frontend to VPS
+        if: steps.changed-components.outputs.web_changed == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
-          source: "dist/*"
+          source: "apps/web/dist/*"
           target: "/root/slush-staging/dist/"
           strip_components: 1
           rm: true
 
       - name: Deploy server code if changed
-        if: steps.server-changed.outputs.changed == 'true'
+        if: steps.changed-components.outputs.server_changed == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
-          source: "server/*"
+          source: "packages/server/*"
           target: "/tmp/slush-server-update"
           strip_components: 1
 
@@ -96,7 +106,7 @@ jobs:
             echo "✅ Staging nginx config applied"
             
             # Update server if changed
-            if [ "${{ steps.server-changed.outputs.changed }}" = "true" ]; then
+            if [ "${{ steps.changed-components.outputs.server_changed }}" = "true" ]; then
               cd /tmp/slush-server-update
               cp -r * /root/slush-app/server/
               cd /root/slush-app/server
@@ -131,6 +141,8 @@ jobs:
           echo "- **Environment**: Staging" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: develop" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Server updated**: ${{ steps.server-changed.outputs.changed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Web updated**: ${{ steps.changed-components.outputs.web_changed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Server updated**: ${{ steps.changed-components.outputs.server_changed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Native changed**: ${{ steps.changed-components.outputs.native_changed }}" >> $GITHUB_STEP_SUMMARY
           echo "- **URL**: https://staging.slushdating.com" >> $GITHUB_STEP_SUMMARY
 

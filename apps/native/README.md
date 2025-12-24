@@ -5,8 +5,8 @@ A native mobile dating app built with React Native and Expo.
 ## 🚀 Quick Start
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies (from monorepo root)
+npm install -w apps/native
 
 # Start development server
 npx expo start
@@ -95,7 +95,7 @@ npx expo prebuild
 cd ios && pod install  # For iOS only
 ```
 
-**Important**: The server must have Agora credentials configured in `server/.env`:
+**Important**: The server must have Agora credentials configured in `packages/server/.env`:
 ```
 AGORA_APP_ID=your_app_id
 AGORA_APP_CERTIFICATE=your_certificate
@@ -118,7 +118,7 @@ eas build --platform android
 
 ## 🔗 API Endpoints
 
-The app connects to the existing backend at `/server`:
+The app connects to the backend at `packages/server`:
 - Auth: `/api/auth/*`
 - Discovery: `/api/discovery/*`
 - Matches: `/api/matches/*`
@@ -129,10 +129,6 @@ The app connects to the existing backend at `/server`:
 ## 📄 License
 
 Private - All rights reserved
-
-kill servers - 
-
-pkill -f "expo"
 
 ## 🚀 Running Development Build
 
@@ -160,8 +156,6 @@ npx expo start --dev-client
 # Kill all Expo servers
 pkill -f "expo"
 
-# Start dev server for development build
-cd /Users/user/Desktop/slush-new-version-react/native
-npx expo start --dev-client
+# Start dev server for development build (from monorepo root)
+npm run native:start
 ```
-npx expo start --dev-client

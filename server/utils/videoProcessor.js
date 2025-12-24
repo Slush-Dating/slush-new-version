@@ -337,3 +337,6 @@ export default {
     createQualityVariants,
     checkFfmpegAvailable
 };
+
+// Ensure directories exist on startup
+ensureDirectories();

@@ -1,0 +1,186 @@
+.app-main {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    /* iOS-specific optimizations for smoother transitions */
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    -webkit-perspective: 1000px;
+    perspective: 1000px;
+}
+
+.content-area {
+    flex: 1;
+    overflow-y: auto;
+    /* iOS-specific optimizations for smoother scrolling and transitions */
+    -webkit-overflow-scrolling: touch;
+    /* Prevent rubber band scrolling during transitions */
+    overscroll-behavior: none;
+    /* Optimize for iOS WebKit rendering */
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+}
+
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 80px;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 20px;
+    padding-bottom: 24px;
+    background: var(--bg-white) !important;
+    border-top: 1px solid var(--border-light) !important;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.03);
+    z-index: 1000;
+    /* iOS-specific optimizations to prevent transition interference */
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+    /* Ensure smooth touch interactions */
+    -webkit-tap-highlight-color: transparent;
+    tap-highlight-color: transparent;
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted) !important;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.nav-item.active {
+    color: var(--slush-blue) !important;
+}
+
+.nav-item.active svg {
+    transform: translateY(-2px);
+    color: var(--slush-blue);
+}
+
+.nav-item span {
+    transition: color 0.3s ease;
+}
+
+.placeholder-screen {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    text-align: center;
+    padding: 40px;
+}
+
+.placeholder-screen h2 {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.placeholder-screen p {
+    color: var(--text-dim);
+}
+
+/* Notification Badge */
+.nav-icon-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.notification-badge {
+    position: absolute;
+    top: -8px;
+    right: -10px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: linear-gradient(135deg, #FF4757 0%, #FF6B81 100%);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(255, 71, 87, 0.4);
+    animation: badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+/* Match notification badge - pink gradient */
+.notification-badge.match-badge {
+    background: linear-gradient(135deg, #FF4D6A 0%, #FF6B9D 100%);
+    box-shadow: 0 2px 8px rgba(255, 77, 106, 0.4);
+}
+
+/* iOS-specific optimizations for better transitions */
+@media screen and (max-width: 768px) {
+    /* iOS devices detection */
+    @supports (-webkit-touch-callout: none) {
+        .app-main {
+            /* Fix viewport height issues on iOS */
+            height: -webkit-fill-available;
+            min-height: -webkit-fill-available;
+        }
+
+        .content-area {
+            /* Prevent iOS bounce scrolling during transitions */
+            overscroll-behavior-y: contain;
+            /* Ensure proper z-index stacking during animations */
+            -webkit-transform-style: preserve-3d;
+            transform-style: preserve-3d;
+        }
+
+        /* Fix for iOS Safari transition flickering */
+        .nav-item span {
+            /* Force hardware acceleration for text transitions */
+            -webkit-transform: translate3d(0, 0, 0);
+            transform: translate3d(0, 0, 0);
+            /* Improve text rendering during transitions */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    }
+}
+
+/* Additional iOS fixes for Capacitor apps */
+@supports (-webkit-overflow-scrolling: touch) {
+    /* Capacitor iOS specific fixes */
+    body {
+        /* Prevent iOS zoom on input focus */
+        -webkit-text-size-adjust: 100%;
+        /* Improve scrolling performance */
+        -webkit-overflow-scrolling: auto;
+    }
+
+    /* Fix for iOS transition timing issues */
+    .content-area {
+        /* Ensure proper animation timing */
+        -webkit-animation-fill-mode: both;
+        animation-fill-mode: both;
+    }
+}

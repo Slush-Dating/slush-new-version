@@ -32,10 +32,45 @@ router.get('/', async (req, res) => {
         const filter = includeAll ? {} : { date: { $gte: new Date() } };
         const events = await Event.find(filter).sort({ date: 1 });
 
-        console.log(`[Events API] Returning ${events.length} events (includeAll: ${includeAll})`);
-        res.json(events);
+        // Convert to JSON to include virtual fields (maleCount, femaleCount, etc.)
+        // The Event model has toJSON configured to include virtuals
+        const eventsData = events.map(event => event.toJSON());
+
+        console.log(`[Events API] Returning ${eventsData.length} events (includeAll: ${includeAll})`);
+        if (eventsData.length > 0) {
+            console.log(`[Events API] Sample event:`, {
+                id: eventsData[0]._id,
+                name: eventsData[0].name,
+                date: eventsData[0].date,
+                maleCount: eventsData[0].maleCount,
+                femaleCount: eventsData[0].femaleCount
+            });
+        }
+        res.json(eventsData);
     } catch (err) {
         console.error('[Events API] Error fetching events:', err.message);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// GET user's current bookings - MUST be before /:id route to avoid route conflict
+router.get('/user/bookings', authMiddleware, async (req, res) => {
+    try {
+        const bookings = await EventBooking.find({
+            userId: req.userId,
+            status: 'booked'
+        })
+        .populate('eventId', '_id name date location imageUrl description eventType minAge maxAge maleCount femaleCount otherCount maxMaleParticipants maxFemaleParticipants isPasswordProtected status')
+        .sort({ bookedAt: -1 });
+
+        // Filter out bookings for events that have already passed
+        const now = new Date();
+        const activeBookings = bookings.filter(booking => {
+            return booking.eventId && booking.eventId.date > now;
+        });
+
+        res.json(activeBookings);
+    } catch (err) {
         res.status(500).json({ message: err.message });
     }
 });
@@ -292,28 +327,6 @@ router.get('/:id/booking-status', authMiddleware, async (req, res) => {
                 status: booking.status
             } : null
         });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// GET user's current bookings
-router.get('/user/bookings', authMiddleware, async (req, res) => {
-    try {
-        const bookings = await EventBooking.find({
-            userId: req.userId,
-            status: 'booked'
-        })
-        .populate('eventId', 'name date location imageUrl description eventType minAge maxAge maleCount femaleCount otherCount maxMaleParticipants maxFemaleParticipants isPasswordProtected')
-        .sort({ bookedAt: -1 });
-
-        // Filter out bookings for events that have already passed
-        const now = new Date();
-        const activeBookings = bookings.filter(booking => {
-            return booking.eventId && booking.eventId.date > now;
-        });
-
-        res.json(activeBookings);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

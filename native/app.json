@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "Slush Dating",
+    "slug": "slush-dating",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "slush",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#3B82F6"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.mobile.app.virtualspeeddate",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Slush needs camera access for video recording and profile photos.",
+        "NSMicrophoneUsageDescription": "Slush needs microphone access for video recording and voice calls.",
+        "NSPhotoLibraryUsageDescription": "Slush needs photo library access to upload profile photos.",
+        "NSLocationWhenInUseUsageDescription": "Slush uses your location to find matches near you."
+      }
+    },
+    "android": {
+      "package": "com.mobile.app.virtualspeeddate",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3B82F6"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Slush to access your camera for video calls and photos."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Slush to access your photos for profile pictures."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Slush to use your location to find matches near you."
+        }
+      ],
+      "expo-video"
+    ],
+    "extra": {
+      "apiUrl": "https://staging.slushdating.com",
+      "eas": {
+        "projectId": "5f75dcfe-5109-4c4b-8cbf-e39adf9824ee"
+      },
+      "router": {
+        "root": "app"
+      }
+    },
+    "owner": "khalil2155"
+  }
+}

@@ -81,6 +81,35 @@ router.get('/unread/by-match', authenticateToken, async (req, res) => {
     }
 });
 
+// Get total unread message count for user (simplified endpoint)
+router.get('/unread', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.userId;
+        if (!userId) return res.status(401).json({ message: 'User ID not found in token' });
+
+        // Get all matches for this user
+        const matches = await Match.find({
+            $or: [{ user1: userId }, { user2: userId }],
+            isMatch: true
+        }).select('_id');
+
+        const matchIds = matches.map(m => m._id);
+
+        // Count unread messages
+        const unreadCount = await Message.countDocuments({
+            matchId: { $in: matchIds },
+            receiverId: userId,
+            isRead: false
+        });
+
+        res.json({ unreadCount });
+
+    } catch (error) {
+        console.error('Error fetching unread count:', error);
+        res.status(500).json({ message: 'Failed to fetch unread count', error: error.message });
+    }
+});
+
 // Get unread message count for user
 router.get('/unread/count', authenticateToken, async (req, res) => {
     try {
@@ -107,6 +136,120 @@ router.get('/unread/count', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error fetching unread count:', error);
         res.status(500).json({ message: 'Failed to fetch unread count', error: error.message });
+    }
+});
+
+// Get chat list (all conversations for the authenticated user)
+router.get('/', authenticateToken, async (req, res) => {
+    try {
+        console.log('📋 GET /api/chat - Fetching chat list');
+        const userId = req.userId;
+        if (!userId) return res.status(401).json({ message: 'User ID not found in token' });
+
+        // Get all matches for this user
+        const matches = await Match.find({
+            $or: [{ user1: userId }, { user2: userId }],
+            isMatch: true
+        })
+            .populate('user1', 'name photos')
+            .populate('user2', 'name photos')
+            .sort({ matchedAt: -1 })
+            .lean();
+
+        const matchIds = matches.map(m => m._id.toString());
+
+        // Initialize empty objects for unread counts and last messages
+        const unreadByMatch = {};
+        const lastMessageByMatch = {};
+
+        // Only query if there are matches
+        if (matchIds.length > 0) {
+            const matchObjectIds = matchIds.map(id => new mongoose.Types.ObjectId(id));
+
+            // Get unread counts per match
+            const unreadCounts = await Message.aggregate([
+                {
+                    $match: {
+                        matchId: { $in: matchObjectIds },
+                        receiverId: new mongoose.Types.ObjectId(userId),
+                        isRead: false
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$matchId',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            unreadCounts.forEach(item => {
+                if (item._id) {
+                    unreadByMatch[item._id.toString()] = item.count;
+                }
+            });
+
+            // Get last message for each match
+            const lastMessages = await Message.aggregate([
+                {
+                    $match: {
+                        matchId: { $in: matchObjectIds }
+                    }
+                },
+                {
+                    $sort: { createdAt: -1 }
+                },
+                {
+                    $group: {
+                        _id: '$matchId',
+                        lastMessage: { $first: '$$ROOT' }
+                    }
+                }
+            ]);
+
+            lastMessages.forEach(item => {
+                if (item._id && item.lastMessage) {
+                    lastMessageByMatch[item._id.toString()] = {
+                        content: item.lastMessage.content,
+                        createdAt: item.lastMessage.createdAt,
+                        senderId: item.lastMessage.senderId.toString()
+                    };
+                }
+            });
+        }
+
+        // Format response
+        const chatList = matches.map(match => {
+            const user1Id = match.user1?._id || match.user1;
+            const otherUser = user1Id && user1Id.toString() === userId.toString()
+                ? match.user2
+                : match.user1;
+
+            if (!otherUser) return null;
+
+            const matchId = match._id.toString();
+            const otherUserId = otherUser._id || otherUser;
+            const photos = otherUser.photos || [];
+            const imageUrl = photos.length > 0 ? photos[0] : null;
+
+            return {
+                matchId,
+                user: {
+                    _id: otherUserId.toString(),
+                    name: otherUser.name || 'Unknown',
+                    photos: photos,
+                    imageUrl: imageUrl
+                },
+                lastMessage: lastMessageByMatch[matchId] || null,
+                unreadCount: unreadByMatch[matchId] || 0
+            };
+        }).filter(chat => chat !== null);
+
+        res.json(chatList);
+
+    } catch (error) {
+        console.error('Error fetching chat list:', error);
+        res.status(500).json({ message: 'Failed to fetch chat list', error: error.message });
     }
 });
 

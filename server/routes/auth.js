@@ -109,21 +109,51 @@ router.post('/register', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
     try {
+        console.log('🔐 Login attempt for email:', req.body.email);
+
         const { email, password } = req.body;
+
+        // Validate input
+        if (!email || !password) {
+            console.log('❌ Missing email or password');
+            return res.status(400).json({ message: 'Email and password are required' });
+        }
 
         const user = await User.findOne({ email });
         if (!user) {
+            console.log('❌ User not found:', email);
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
+            console.log('❌ Password mismatch for user:', email);
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
+        console.log('✅ Password verified for user:', email, '- generating token');
+
+        // Ensure JWT_SECRET is available
+        if (!JWT_SECRET) {
+            console.error('❌ JWT_SECRET not configured');
+            return res.status(500).json({ message: 'Server configuration error' });
+        }
+
         const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ token, user: { id: user._id, email: user.email, onboardingCompleted: user.onboardingCompleted, isPremium: user.isPremium } });
+
+        console.log('✅ Token generated successfully for user:', email);
+
+        res.json({
+            token,
+            user: {
+                id: user._id,
+                email: user.email,
+                onboardingCompleted: user.onboardingCompleted,
+                isPremium: user.isPremium
+            }
+        });
     } catch (err) {
+        console.error('❌ Login server error:', err);
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 });

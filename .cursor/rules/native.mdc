@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+use slush-react-native directory for every chat as everything is relating to the native build for expo.

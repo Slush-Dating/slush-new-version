@@ -256,8 +256,8 @@ router.get('/', authenticate, async (req, res) => {
             $or: [{ user1: userId }, { user2: userId }],
             isMatch: true
         })
-            .populate('user1', 'name photos bio dob gender')
-            .populate('user2', 'name photos bio dob gender')
+            .populate('user1', 'name photos bio dob gender isAdmin')
+            .populate('user2', 'name photos bio dob gender isAdmin')
             .populate('eventId', 'name date location')
             .sort({ matchedAt: -1 });
 
@@ -268,6 +268,22 @@ router.get('/', authenticate, async (req, res) => {
                 : match.user1;
 
             if (!otherUser) return null;
+
+            // Exclude admin users (admin users are for backend panel only)
+            // Check if otherUser has isAdmin field (populated user) or fetch it
+            let isAdminUser = false;
+            if (otherUser.isAdmin !== undefined) {
+                isAdminUser = otherUser.isAdmin === true;
+            } else {
+                // If isAdmin wasn't populated, check the user document
+                const userDoc = await User.findById(otherUser._id || otherUser).select('isAdmin email name').lean();
+                if (userDoc) {
+                    isAdminUser = userDoc.isAdmin === true || 
+                                 (userDoc.email && /admin/i.test(userDoc.email)) ||
+                                 (userDoc.name && /admin/i.test(userDoc.name));
+                }
+            }
+            if (isAdminUser) return null;
 
             // Fetch last message for this match
             const lastMessage = await Message.findOne({ matchId: match._id })
@@ -344,21 +360,35 @@ router.get('/liked-you', authenticate, async (req, res) => {
             ],
             isMatch: false
         })
-            .populate('user1', 'name photos bio dob gender')
-            .populate('user2', 'name photos bio dob gender')
+            .populate('user1', 'name photos bio dob gender isAdmin')
+            .populate('user2', 'name photos bio dob gender isAdmin')
             .sort({ updatedAt: -1 });
 
         const likedByUsers = likes.filter(match => {
             if (!match.actions) return false;
             const currentUserAction = match.actions.find(a => a.fromUser && a.fromUser.toString() === userId.toString());
             return !currentUserAction || (currentUserAction.action !== 'pass');
-        }).map(match => {
+        }).map(async match => {
             const user1Id = match.user1?._id || match.user1;
             const otherUser = user1Id && user1Id.toString() === userId.toString()
                 ? match.user2
                 : match.user1;
 
             if (!otherUser) return null;
+
+            // Exclude admin users (admin users are for backend panel only)
+            let isAdminUser = false;
+            if (otherUser.isAdmin !== undefined) {
+                isAdminUser = otherUser.isAdmin === true;
+            } else {
+                const userDoc = await User.findById(otherUser._id || otherUser).select('isAdmin email name').lean();
+                if (userDoc) {
+                    isAdminUser = userDoc.isAdmin === true || 
+                                 (userDoc.email && /admin/i.test(userDoc.email)) ||
+                                 (userDoc.name && /admin/i.test(userDoc.name));
+                }
+            }
+            if (isAdminUser) return null;
 
             // Calculate age from dob
             let age = null;
@@ -391,9 +421,12 @@ router.get('/liked-you', authenticate, async (req, res) => {
                 likedAt: match.updatedAt,
                 isSuperLike
             };
-        }).filter(user => user !== null);
+        });
 
-        res.json(likedByUsers);
+        // Filter out null values and await all async operations
+        const filteredLikedByUsers = (await Promise.all(likedByUsers)).filter(user => user !== null);
+
+        res.json(filteredLikedByUsers);
     } catch (err) {
         console.error('Get liked-you error:', err);
         res.status(500).json({ message: 'Server error', error: err.message });

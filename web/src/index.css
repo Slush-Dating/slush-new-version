@@ -1,0 +1,352 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Enhanced Brand Colors - Slush */
+  --slush-blue: #3B82F6;
+  --slush-blue-dark: #1D4ED8;
+  --slush-blue-light: #60A5FA;
+  --slush-blue-pale: #DBEAFE;
+  --primary: var(--slush-blue);
+  --primary-accent: var(--slush-blue-dark);
+  --primary-light: var(--slush-blue-light);
+  --primary-pale: var(--slush-blue-pale);
+
+  /* Secondary Colors */
+  --slush-purple: #8B5CF6;
+  --slush-purple-dark: #7C3AED;
+  --slush-purple-light: #A78BFA;
+  --slush-pink: #EC4899;
+  --slush-pink-dark: #BE185D;
+  --slush-orange: #F59E0B;
+  --slush-orange-dark: #D97706;
+  --slush-red: #EF4444;
+
+  /* Semantic Colors */
+  --success: #10B981;
+  --success-light: #34D399;
+  --success-pale: #D1FAE5;
+  --warning: #F59E0B;
+  --warning-light: #FCD34D;
+  --warning-pale: #FEF3C7;
+  --error: #EF4444;
+  --error-light: #F87171;
+  --error-pale: #FEE2E2;
+
+  /* Backgrounds - Brand Standard (Light) */
+  --bg-primary: #F8F9FA;
+  --bg-secondary: #F1F3F4;
+  --bg-tertiary: #FAF9F6;
+  --bg-accent: #E9ECEF;
+  --bg-offwhite: var(--bg-primary);
+  --bg-white: var(--bg-tertiary);
+
+  /* Text Colors (Light Theme) */
+  --text-primary: #1A202C;
+  --text-secondary: #4A5568;
+  --text-tertiary: #718096;
+  --text-muted: #A0AEC0;
+  --text-main: var(--text-primary);
+  --text-dim: var(--text-tertiary);
+
+  /* Glass Effects (Light) */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-bg-strong: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(0, 0, 0, 0.05);
+  --glass-border-light: rgba(0, 0, 0, 0.02);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+  --glass-shadow-light: 0 4px 16px rgba(0, 0, 0, 0.02);
+  --glass-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.08);
+
+  /* Border Colors */
+  --border-light: rgba(0, 0, 0, 0.05);
+  --border-medium: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.12);
+
+  /* Radius Scale */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
+  --shadow-blue: 0 8px 32px rgba(59, 130, 246, 0.2);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-offwhite);
+  color: var(--text-main);
+  overflow: hidden;
+  /* Prevent scrolling for the swipe feed */
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  /* Mobile optimizations */
+  -webkit-text-size-adjust: 100%;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  /* Prevent iOS bounce scrolling */
+  overscroll-behavior: none;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  color: inherit;
+  transition: all 0.2s var(--transition-smooth);
+}
+
+button:active {
+  transform: scale(0.95);
+}
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.gradient-text {
+  color: var(--slush-blue);
+}
+
+.vibrant-btn {
+  background: var(--slush-blue);
+  color: white;
+  padding: 12px 24px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+}
+
+.vibrant-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-2px);
+}
+
+.icon-btn {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-main);
+}
+
+/* Mobile-specific button improvements */
+@media (max-width: 768px) {
+  button {
+    min-height: 44px;
+    /* iOS minimum touch target */
+    min-width: 44px;
+  }
+
+  .vibrant-btn {
+    min-height: 48px;
+    padding: 14px 28px;
+  }
+
+  /* Ensure navigation buttons are properly sized */
+  .nav-item {
+    min-height: 60px;
+    padding: 8px 4px;
+  }
+}
+
+/* iOS-specific button fixes */
+@supports (-webkit-touch-callout: none) {
+  button {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
+
+/* ============================================
+   BRAND REUSABLE STYLES
+   ============================================ */
+
+/* Brand background container (Light) */
+.brand-bg {
+  background: var(--bg-offwhite);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated background orbs container */
+.brand-orbs {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Individual orb styling */
+.brand-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.4;
+  animation: brand-float 12s ease-in-out infinite;
+}
+
+.brand-orb-1 {
+  width: 400px;
+  height: 400px;
+  background: linear-gradient(135deg, var(--slush-blue) 0%, var(--slush-blue-dark) 100%);
+  top: -10%;
+  right: -10%;
+  animation-delay: 0s;
+}
+
+.brand-orb-2 {
+  width: 300px;
+  height: 300px;
+  background: linear-gradient(135deg, var(--slush-purple) 0%, var(--slush-pink) 100%);
+  bottom: -5%;
+  left: -10%;
+  animation-delay: -4s;
+}
+
+.brand-orb-3 {
+  width: 200px;
+  height: 200px;
+  background: linear-gradient(135deg, var(--slush-blue-light) 0%, var(--slush-purple-light) 100%);
+  top: 40%;
+  left: 30%;
+  animation-delay: -8s;
+}
+
+@keyframes brand-float {
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(30px, -20px) scale(1.05);
+  }
+
+  66% {
+    transform: translate(-20px, 30px) scale(0.95);
+  }
+}
+
+/* Light glassmorphism card */
+.glass-light {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-md);
+}
+
+.glass-light-strong {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Brand primary button */
+.brand-btn-primary {
+  padding: 18px 32px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--slush-blue) 0%, var(--slush-blue-dark) 100%);
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.35);
+}
+
+.brand-btn-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(59, 130, 246, 0.5);
+}
+
+/* Brand secondary button (Light) */
+.brand-btn-secondary {
+  padding: 18px 32px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-medium);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+}
+
+.brand-btn-secondary:hover {
+  background: var(--bg-secondary);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Mobile adjustments for orbs */
+@media (max-width: 768px) {
+  .brand-orb-1 {
+    width: 250px;
+    height: 250px;
+  }
+
+  .brand-orb-2 {
+    width: 180px;
+    height: 180px;
+  }
+
+  .brand-orb-3 {
+    width: 120px;
+    height: 120px;
+  }
+}

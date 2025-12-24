@@ -138,21 +138,18 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
         }
 
         // Find potential partners
+        // Always exclude admin users (admin users are for backend panel only)
         const query = {
             _id: {
                 $in: allParticipants.map(id => new mongoose.Types.ObjectId(id)),
                 $ne: new mongoose.Types.ObjectId(userId)
             },
             onboardingCompleted: true,
+            isAdmin: { $ne: true },
+            email: { $not: { $regex: /admin/i } },
+            name: { $not: { $regex: /admin/i } },
             ...genderFilter
         };
-
-        // Exclude admin users in staging and production environments
-        const isProduction = process.env.NODE_ENV === 'production';
-        const isStaging = process.env.NODE_ENV === 'staging' || process.env.VITE_ENV === 'staging';
-        if (isProduction || isStaging) {
-            query.isAdmin = { $ne: true };
-        }
 
         const potentialPartners = await User.find(query)
             .select('name dob gender bio photos')

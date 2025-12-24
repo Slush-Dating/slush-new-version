@@ -54,18 +54,14 @@ router.get('/feed', authenticate, async (req, res) => {
         });
 
         // Build query - exclude current user and matched users
+        // Always exclude admin users from discovery feed (admin users are for backend panel only)
         const query = {
             _id: { $nin: excludedUserIds.map(id => new mongoose.Types.ObjectId(id)) },
-            onboardingCompleted: true
+            onboardingCompleted: true,
+            isAdmin: { $ne: true },
+            email: { $not: { $regex: /admin/i } },
+            name: { $not: { $regex: /admin/i } }
         };
-
-        // Always exclude admin users from discovery feed (admin users are for authentication only)
-        // Check for isAdmin flag, and also as a safeguard, exclude users with 'admin' in name or email
-        query.$and = [
-            { isAdmin: { $ne: true } },
-            { email: { $not: /admin/i } },
-            { name: { $not: /admin/i } }
-        ];
 
         // Debug: Log query details
         const totalUsers = await User.countDocuments({});
@@ -101,14 +97,32 @@ router.get('/feed', authenticate, async (req, res) => {
             // Get video URL - prefer compressed version if available
             let videoUrl = null;
             let videoThumbnail = null;
+
             if (user.videos && user.videos.length > 0) {
-                const originalVideo = user.videos[0];
-                // Check if compressed version exists
-                if (originalVideo.includes('/uploads/')) {
-                    videoUrl = originalVideo.replace('/uploads/', '/uploads/videos/compressed/').replace(/\.[^.]+$/, '_compressed.mp4');
-                    videoThumbnail = originalVideo.replace('/uploads/', '/uploads/videos/thumbnails/').replace(/\.[^.]+$/, '_thumb.jpg');
+                const originalVideo = user.videos[0]; // e.g., "/uploads/file-123.mp4"
+                const filename = path.basename(originalVideo);
+                const baseName = path.parse(filename).name;
+
+                // Construct potential paths
+                const compressedRelPath = `/uploads/videos/compressed/${baseName}_compressed.mp4`;
+                const thumbnailRelPath = `/uploads/videos/thumbnails/${baseName}_thumb.jpg`;
+
+                // Absolute paths for disk check
+                const uploadsDir = path.join(__dirname, '..');
+                const compressedAbsPath = path.join(uploadsDir, 'uploads', 'videos', 'compressed', `${baseName}_compressed.mp4`);
+                const thumbnailAbsPath = path.join(uploadsDir, 'uploads', 'videos', 'thumbnails', `${baseName}_thumb.jpg`);
+
+                // Check if compressed version exists on disk
+                if (fs.existsSync(compressedAbsPath)) {
+                    videoUrl = compressedRelPath;
                 } else {
+                    // Fallback to original
                     videoUrl = originalVideo;
+                }
+
+                // Check if thumbnail exists
+                if (fs.existsSync(thumbnailAbsPath)) {
+                    videoThumbnail = thumbnailRelPath;
                 }
             }
 
@@ -183,18 +197,14 @@ router.get('/event-partners', authenticate, async (req, res) => {
         });
 
         // Build base query
+        // Always exclude admin users from discovery feed (admin users are for backend panel only)
         const query = {
             _id: { $nin: excludedUserIds.map(id => new mongoose.Types.ObjectId(id)) },
-            onboardingCompleted: true
+            onboardingCompleted: true,
+            isAdmin: { $ne: true },
+            email: { $not: { $regex: /admin/i } },
+            name: { $not: { $regex: /admin/i } }
         };
-
-        // Always exclude admin users from discovery feed (admin users are for authentication only)
-        // Check for isAdmin flag, and also as a safeguard, exclude users with 'admin' in name or email
-        query.$and = [
-            { isAdmin: { $ne: true } },
-            { email: { $not: /admin/i } },
-            { name: { $not: /admin/i } }
-        ];
 
         // Apply gender filtering based on event type
         if (eventType === 'straight') {

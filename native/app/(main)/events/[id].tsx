@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import {
     ArrowLeft,
     Calendar,
@@ -42,18 +43,31 @@ export default function EventDetailScreen() {
     const [password, setPassword] = useState('');
     const [bookingStatus, setBookingStatus] = useState<{ isBooked: boolean } | null>(null);
     const [isBookmarked, setIsBookmarked] = useState(false);
+    const [participants, setParticipants] = useState<{
+        maleParticipants: Array<{ _id: string; name: string; photos?: string[] }>;
+        femaleParticipants: Array<{ _id: string; name: string; photos?: string[] }>;
+        otherParticipants: Array<{ _id: string; name: string; photos?: string[] }>;
+    } | null>(null);
 
     useEffect(() => {
         if (!id) return;
 
         const fetchEvent = async () => {
             try {
-                const [eventData, status] = await Promise.all([
+                const [eventData, status, participantsData] = await Promise.all([
                     eventService.getEventById(id),
                     eventService.getBookingStatus(id),
+                    eventService.getParticipants(id).catch(() => null),
                 ]);
                 setEvent(eventData);
                 setBookingStatus(status);
+                if (participantsData) {
+                    setParticipants({
+                        maleParticipants: participantsData.maleParticipants || [],
+                        femaleParticipants: participantsData.femaleParticipants || [],
+                        otherParticipants: participantsData.otherParticipants || [],
+                    });
+                }
             } catch (err) {
                 console.error('Failed to fetch event:', err);
             } finally {
@@ -169,7 +183,7 @@ export default function EventDetailScreen() {
     if (isLoading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#ec4899" />
+                <ActivityIndicator size="large" color="#3B82F6" />
             </View>
         );
     }
@@ -248,6 +262,44 @@ export default function EventDetailScreen() {
                         <Text style={styles.description}>
                             Join {participantCount} other people at this event!
                         </Text>
+                        {participants && (
+                            <ScrollView 
+                                horizontal 
+                                showsHorizontalScrollIndicator={false}
+                                style={styles.participantsList}
+                                contentContainerStyle={styles.participantsListContent}
+                            >
+                                {[
+                                    ...participants.maleParticipants,
+                                    ...participants.femaleParticipants,
+                                    ...participants.otherParticipants,
+                                ].map((participant) => {
+                                    const photoUrl = participant.photos?.[0];
+                                    return (
+                                        <View key={participant._id} style={styles.participantAvatarContainer}>
+                                            {photoUrl ? (
+                                                <View style={styles.blurredImageWrapper}>
+                                                    <Image
+                                                        source={{ uri: getAbsoluteMediaUrl(photoUrl) }}
+                                                        style={styles.participantAvatarImage}
+                                                        resizeMode="cover"
+                                                    />
+                                                    <BlurView
+                                                        intensity={20}
+                                                        tint="light"
+                                                        style={styles.blurOverlay}
+                                                    />
+                                                </View>
+                                            ) : (
+                                                <View style={[styles.participantAvatar, styles.participantAvatarPlaceholder]}>
+                                                    <Users size={24} color="#64748b" />
+                                                </View>
+                                            )}
+                                        </View>
+                                    );
+                                })}
+                            </ScrollView>
+                        )}
                     </View>
 
                     {/* Password Input */}
@@ -430,14 +482,43 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     participantsList: {
-        gap: 12,
+        marginTop: 8,
+    },
+    participantsListContent: {
         paddingRight: 24,
+        gap: 12,
+    },
+    participantAvatarContainer: {
+        marginRight: 12,
     },
     participantAvatar: {
         width: 60,
         height: 60,
-        borderRadius: 8,
-        marginRight: 12,
+        borderRadius: 30,
+        overflow: 'hidden',
+    },
+    participantAvatarImage: {
+        width: 60,
+        height: 60,
+    },
+    participantAvatarPlaceholder: {
+        backgroundColor: '#f1f5f9',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    blurredImageWrapper: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    blurOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
     },
     passwordSection: {
         gap: 12,

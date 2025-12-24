@@ -79,4 +79,5 @@ export interface DiscoveryProfile {
     photos: string[];
     interests: string[];
     icebreakerQuestions?: string[];
+    isAdmin?: boolean;
 }

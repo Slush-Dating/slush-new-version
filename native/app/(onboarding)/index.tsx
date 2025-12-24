@@ -312,7 +312,7 @@ export default function OnboardingScreen() {
                                         >
                                             {interest}
                                         </Text>
-                                        {isSelected && <Check size={14} color="#ec4899" />}
+                                        {isSelected && <Check size={14} color="#3B82F6" />}
                                     </TouchableOpacity>
                                 );
                             })}
@@ -446,7 +446,7 @@ export default function OnboardingScreen() {
                             disabled={!canContinue() || isLoading}
                         >
                             <LinearGradient
-                                colors={canContinue() ? ['#ec4899', '#f472b6'] : ['#374151', '#374151']}
+                                colors={canContinue() ? ['#3B82F6', '#60A5FA'] : ['#374151', '#374151']}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 0 }}
                                 style={styles.buttonGradient}
@@ -570,8 +570,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     genderSelected: {
-        borderColor: '#ec4899',
-        backgroundColor: 'rgba(236, 72, 153, 0.1)',
+        borderColor: '#3B82F6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
     },
     genderText: {
         fontSize: 18,
@@ -579,7 +579,7 @@ const styles = StyleSheet.create({
         color: '#94a3b8',
     },
     genderTextSelected: {
-        color: '#ec4899',
+        color: '#3B82F6',
     },
     photosGrid: {
         flexDirection: 'row',
@@ -613,7 +613,7 @@ const styles = StyleSheet.create({
     locationButtonText: {
         fontSize: 18,
         fontWeight: '500',
-        color: '#ec4899',
+        color: '#3B82F6',
     },
     locationSuccess: {
         alignItems: 'center',
@@ -666,8 +666,8 @@ const styles = StyleSheet.create({
         minWidth: 80,
     },
     interestSelected: {
-        borderColor: '#ec4899',
-        backgroundColor: 'rgba(236, 72, 153, 0.1)',
+        borderColor: '#3B82F6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
     },
     interestText: {
         fontSize: 14,
@@ -675,7 +675,7 @@ const styles = StyleSheet.create({
         color: '#94a3b8',
     },
     interestTextSelected: {
-        color: '#ec4899',
+        color: '#3B82F6',
     },
     promptSection: {
         gap: 12,

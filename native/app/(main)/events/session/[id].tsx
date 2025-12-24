@@ -228,7 +228,7 @@ export default function EventSessionScreen() {
     if (phase === 'loading') {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#ec4899" />
+                <ActivityIndicator size="large" color="#3B82F6" />
                 <Text style={styles.loadingText}>Finding your next match...</Text>
             </View>
         );
@@ -253,7 +253,7 @@ export default function EventSessionScreen() {
                                 {matches.map((match, index) => (
                                     <View key={index} style={styles.matchAvatar}>
                                         <View style={styles.matchPlaceholder}>
-                                            <Heart size={24} color="#ec4899" />
+                                            <Heart size={24} color="#3B82F6" />
                                         </View>
                                         <Text style={styles.matchName}>{match.name}</Text>
                                     </View>
@@ -273,7 +273,7 @@ export default function EventSessionScreen() {
                         onPress={handleComplete}
                     >
                         <LinearGradient
-                            colors={['#ec4899', '#f472b6']}
+                            colors={['#3B82F6', '#60A5FA']}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                             style={styles.completeGradient}
@@ -292,7 +292,7 @@ export default function EventSessionScreen() {
     if (phase === 'waiting') {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#ec4899" />
+                <ActivityIndicator size="large" color="#3B82F6" />
                 <Text style={styles.loadingText}>
                     Round {roundNumber} of {totalRounds}
                 </Text>
@@ -341,7 +341,7 @@ export default function EventSessionScreen() {
                 </View>
 
                 <View style={styles.timerContainer}>
-                    <Clock size={16} color={phase === 'feedback' ? '#f59e0b' : '#ec4899'} />
+                    <Clock size={16} color={phase === 'feedback' ? '#f59e0b' : '#3B82F6'} />
                     <Text
                         style={[
                             styles.timer,
@@ -497,13 +497,13 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
     },
     roundBadge: {
-        backgroundColor: 'rgba(236, 72, 153, 0.2)',
+        backgroundColor: 'rgba(59, 130, 246, 0.2)',
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 12,
     },
     roundText: {
-        color: '#ec4899',
+        color: '#3B82F6',
         fontSize: 14,
         fontWeight: '600',
     },
@@ -517,7 +517,7 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     timer: {
-        color: '#ec4899',
+        color: '#3B82F6',
         fontSize: 24,
         fontWeight: '700',
     },
@@ -661,7 +661,7 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: 'rgba(236, 72, 153, 0.2)',
+        backgroundColor: 'rgba(59, 130, 246, 0.2)',
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 8,

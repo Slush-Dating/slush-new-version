@@ -75,6 +75,42 @@ export default function EventsScreen() {
 
             console.log('📋 Received events:', allEvents.length);
             console.log('📅 Received bookings:', bookings.length);
+            console.log('📅 Bookings data:', JSON.stringify(bookings, null, 2));
+            
+            // If bookings array is empty but we have events, try checking booking status for each event
+            // This is a fallback in case the bookings endpoint isn't working but individual status checks work
+            if (bookings.length === 0 && allEvents.length > 0) {
+                console.log('📅 No bookings from API, checking individual event booking statuses...');
+                const bookingChecks = await Promise.allSettled(
+                    allEvents.slice(0, 5).map(event => 
+                        event._id ? eventService.getBookingStatus(event._id) : Promise.resolve({ isBooked: false, booking: null })
+                    )
+                );
+                
+                const bookedEventIds = new Set<string>();
+                bookingChecks.forEach((result, index) => {
+                    if (result.status === 'fulfilled' && result.value.isBooked && allEvents[index]?._id) {
+                        bookedEventIds.add(String(allEvents[index]._id));
+                        console.log('📅 Found booked event via status check:', allEvents[index].name, allEvents[index]._id);
+                    }
+                });
+                
+                if (bookedEventIds.size > 0) {
+                    console.log('📅 Found', bookedEventIds.size, 'booked events via status checks');
+                    // Create mock bookings from the events
+                    const mockBookings = Array.from(bookedEventIds).map(eventId => {
+                        const event = allEvents.find(e => e._id?.toString() === eventId);
+                        return {
+                            _id: `mock-${eventId}`,
+                            eventId: event || { _id: eventId },
+                            userId: user?._id || user?.id,
+                            status: 'booked'
+                        };
+                    });
+                    bookings.push(...mockBookings);
+                    console.log('📅 Added mock bookings, total now:', bookings.length);
+                }
+            }
 
             // Process bookings to get booked event IDs and event data
             const bookedIds = new Set<string>();
@@ -84,8 +120,24 @@ export default function EventsScreen() {
                 // Handle both populated and non-populated eventId
                 // When populated, eventId is an object with _id property
                 // When not populated, eventId is just the ObjectId string
-                const eventId = booking.eventId?._id || booking.eventId?._id?.toString() || booking.eventId;
-                const eventData = booking.eventId;
+                let eventId: string | null = null;
+                let eventData: any = null;
+
+                if (!booking.eventId) {
+                    console.log('📅 Booking has no eventId:', booking);
+                    return;
+                }
+
+                // Check if eventId is populated (object) or just an ID (string/ObjectId)
+                if (typeof booking.eventId === 'object' && booking.eventId !== null) {
+                    // Populated event object
+                    eventId = booking.eventId._id?.toString() || booking.eventId._id || null;
+                    eventData = booking.eventId;
+                } else {
+                    // Not populated - just an ID string or ObjectId
+                    eventId = booking.eventId.toString();
+                    eventData = null;
+                }
 
                 if (eventId) {
                     const eventIdStr = eventId.toString();
@@ -93,17 +145,21 @@ export default function EventsScreen() {
                     console.log('📅 Found booking for event:', eventIdStr);
 
                     // If eventId is populated with full event data, use it
-                    if (eventData && typeof eventData === 'object') {
+                    if (eventData && typeof eventData === 'object' && eventData !== null) {
                         // Check if it has event properties (not just an ID)
                         if (eventData.name || eventData.date) {
-                            // Ensure _id is set
+                            // Ensure _id is set correctly
                             const fullEventData: EventData = {
                                 ...eventData,
-                                _id: eventData._id || eventIdStr
+                                _id: eventData._id?.toString() || eventIdStr
                             };
                             bookedEventsMap.set(eventIdStr, fullEventData);
-                            console.log('📅 Added booked event to map:', fullEventData.name, fullEventData._id);
+                            console.log('📅 Added booked event to map:', fullEventData.name, fullEventData._id, 'Date:', fullEventData.date);
+                        } else {
+                            console.log('📅 Event data missing name/date:', eventData);
                         }
+                    } else {
+                        console.log('📅 Booking eventId not populated, will try to find in events list');
                     }
                 }
             });
@@ -153,38 +209,49 @@ export default function EventsScreen() {
             setError('');
 
             // Set the most upcoming booked event for countdown banner
-            // Use the bookedEventsMap directly since it contains populated event data from the bookings API
-            console.log('📅 Looking for countdown event from bookedEventsMap');
+            // First try bookedEventsMap (populated event data from bookings API)
+            console.log('📅 Looking for countdown event from bookedEventsMap (size:', bookedEventsMap.size, ')');
 
             const upcomingBookedFromMap = Array.from(bookedEventsMap.values())
                 .filter((event) => {
+                    if (!event.date) {
+                        console.log('📅 Event missing date:', event.name || event._id);
+                        return false;
+                    }
                     const eventDate = new Date(event.date);
                     const isUpcoming = eventDate >= now && event.status !== 'Cancelled';
-                    console.log('📅 Checking booked event from map:', event.name, 'date:', event.date, 'isUpcoming:', isUpcoming);
+                    console.log('📅 Checking booked event from map:', event.name || 'Unknown', 'date:', event.date, 'isUpcoming:', isUpcoming, 'status:', event.status);
                     return isUpcoming;
                 })
                 .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-            console.log('📅 Found', upcomingBookedFromMap.length, 'upcoming booked events from bookings API');
+            console.log('📅 Found', upcomingBookedFromMap.length, 'upcoming booked events from bookings API map');
 
             if (upcomingBookedFromMap.length > 0) {
                 const mostUpcoming = upcomingBookedFromMap[0];
-                console.log('📅 Setting booked event for countdown from bookings:', mostUpcoming.name, mostUpcoming.date, mostUpcoming._id);
+                console.log('✅ Setting booked event for countdown from bookings map:', mostUpcoming.name, mostUpcoming.date, mostUpcoming._id);
                 setBookedEvent(mostUpcoming);
             } else {
                 // Fallback: try to find from the events list (in case bookings weren't populated with event data)
-                console.log('📅 No events in bookedEventsMap, checking upcomingEvents list');
+                console.log('📅 No events in bookedEventsMap, checking upcomingEvents list (', upcomingEvents.length, 'events)');
                 const upcomingBookedEvents = upcomingEvents.filter((event) => {
                     const eventIdStr = event._id ? String(event._id) : '';
-                    return eventIdStr && bookedIds.has(eventIdStr);
-                });
+                    const isBooked = eventIdStr && bookedIds.has(eventIdStr);
+                    if (isBooked) {
+                        console.log('📅 Found booked event in events list:', event.name, event._id);
+                    }
+                    return isBooked;
+                })
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                 if (upcomingBookedEvents.length > 0) {
                     const mostUpcoming = upcomingBookedEvents[0];
-                    console.log('📅 Setting booked event for countdown from events list:', mostUpcoming.name, mostUpcoming.date);
+                    console.log('✅ Setting booked event for countdown from events list:', mostUpcoming.name, mostUpcoming.date, mostUpcoming._id);
                     setBookedEvent(mostUpcoming);
                 } else {
-                    console.log('📅 No upcoming booked events found anywhere - clearing bookedEvent state');
+                    console.log('⚠️ No upcoming booked events found anywhere - clearing bookedEvent state');
+                    console.log('📅 Booked IDs:', Array.from(bookedIds));
+                    console.log('📅 Upcoming events IDs:', upcomingEvents.map(e => e._id));
                     setBookedEvent(null);
                 }
             }
@@ -209,47 +276,47 @@ export default function EventsScreen() {
             const bookedEventsMap = new Map<string, EventData>();
 
             bookings.forEach((booking: any) => {
-                const eventId = booking.eventId?._id || booking.eventId?._id?.toString() || booking.eventId;
-                const eventData = booking.eventId;
+                let eventId: string | null = null;
+                let eventData: any = null;
+
+                if (!booking.eventId) {
+                    console.log('📅 Refresh: Booking has no eventId:', booking);
+                    return;
+                }
+
+                // Check if eventId is populated (object) or just an ID (string/ObjectId)
+                if (typeof booking.eventId === 'object' && booking.eventId !== null) {
+                    // Populated event object
+                    eventId = booking.eventId._id?.toString() || booking.eventId._id || null;
+                    eventData = booking.eventId;
+                } else {
+                    // Not populated - just an ID string or ObjectId
+                    eventId = booking.eventId.toString();
+                    eventData = null;
+                }
 
                 if (eventId) {
                     const eventIdStr = eventId.toString();
                     bookedIds.add(eventIdStr);
 
-                    if (eventData && typeof eventData === 'object' && (eventData.name || eventData.date)) {
+                    if (eventData && typeof eventData === 'object' && eventData !== null && (eventData.name || eventData.date)) {
                         const fullEventData: EventData = {
                             ...eventData,
-                            _id: eventData._id || eventIdStr
+                            _id: eventData._id?.toString() || eventIdStr
                         };
                         bookedEventsMap.set(eventIdStr, fullEventData);
-                        console.log('📅 Refresh: Added booked event to map:', fullEventData.name);
+                        console.log('📅 Refresh: Added booked event to map:', fullEventData.name, fullEventData._id, 'Date:', fullEventData.date);
+                    } else {
+                        console.log('📅 Refresh: Booking eventId not populated or missing data');
                     }
                 }
             });
 
             setBookedEventIds(bookedIds);
 
-            // Update booked event for countdown directly from bookedEventsMap
+            // Update events list and find booked event for countdown
             const now = new Date();
-            const upcomingBookedFromMap = Array.from(bookedEventsMap.values())
-                .filter((event) => {
-                    const eventDate = new Date(event.date);
-                    return eventDate >= now && event.status !== 'Cancelled';
-                })
-                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-            console.log('📅 Refresh: Found', upcomingBookedFromMap.length, 'upcoming booked events');
-
-            if (upcomingBookedFromMap.length > 0) {
-                const mostUpcoming = upcomingBookedFromMap[0];
-                console.log('📅 Refresh: Setting booked event for countdown:', mostUpcoming.name, mostUpcoming.date);
-                setBookedEvent(mostUpcoming);
-            } else {
-                console.log('📅 Refresh: No upcoming booked events found');
-                setBookedEvent(null);
-            }
-
-            // Update events list to include any new booked events
+            
             setEvents((currentEvents) => {
                 const eventsMap = new Map<string, EventData>();
 
@@ -268,13 +335,49 @@ export default function EventsScreen() {
                 });
 
                 // Filter and sort
-                const nowTime = new Date();
                 const upcomingEvents = Array.from(eventsMap.values())
                     .filter((event) => {
                         const eventDate = new Date(event.date);
-                        return eventDate >= nowTime && event.status !== 'Cancelled';
+                        return eventDate >= now && event.status !== 'Cancelled';
                     })
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                // Find booked event for countdown from the merged events
+                const upcomingBookedFromMap = Array.from(bookedEventsMap.values())
+                    .filter((event) => {
+                        if (!event.date) {
+                            return false;
+                        }
+                        const eventDate = new Date(event.date);
+                        return eventDate >= now && event.status !== 'Cancelled';
+                    })
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                console.log('📅 Refresh: Found', upcomingBookedFromMap.length, 'upcoming booked events from map');
+
+                if (upcomingBookedFromMap.length > 0) {
+                    const mostUpcoming = upcomingBookedFromMap[0];
+                    console.log('✅ Refresh: Setting booked event for countdown:', mostUpcoming.name, mostUpcoming.date, mostUpcoming._id);
+                    // Schedule state update after this setState completes
+                    Promise.resolve().then(() => setBookedEvent(mostUpcoming));
+                } else {
+                    // Fallback: find from merged events list
+                    const upcomingBookedFromList = upcomingEvents
+                        .filter((event) => {
+                            const eventIdStr = event._id ? String(event._id) : '';
+                            return eventIdStr && bookedIds.has(eventIdStr);
+                        })
+                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                    if (upcomingBookedFromList.length > 0) {
+                        const mostUpcoming = upcomingBookedFromList[0];
+                        console.log('✅ Refresh: Setting booked event for countdown from events list:', mostUpcoming.name, mostUpcoming.date);
+                        Promise.resolve().then(() => setBookedEvent(mostUpcoming));
+                    } else {
+                        console.log('⚠️ Refresh: No upcoming booked events found');
+                        Promise.resolve().then(() => setBookedEvent(null));
+                    }
+                }
 
                 return upcomingEvents;
             });

@@ -55,14 +55,37 @@ export default function ChatListScreen() {
 
     const fetchData = useCallback(async () => {
         try {
+            console.log('📋 Chat list screen: Starting data fetch');
             const [chatList, matchesData] = await Promise.all([
                 chatService.getChatList(),
                 matchService.getMatches(),
             ]);
-            setChats(chatList || []);
-            setMatches(matchesData || []);
-        } catch (err) {
-            console.error('Failed to fetch chat data:', err);
+            
+            console.log('📋 Chat list screen: Data fetched successfully', {
+                chatCount: chatList?.length || 0,
+                matchCount: matchesData?.length || 0
+            });
+            
+            setChats(Array.isArray(chatList) ? chatList : []);
+            setMatches(Array.isArray(matchesData) ? matchesData : []);
+        } catch (err: any) {
+            console.error('📋 Chat list screen: Failed to fetch chat data:', err);
+            
+            // Check if it's a session expired error
+            if (err?.message === 'SESSION_EXPIRED') {
+                console.log('📋 Session expired, user may need to log in again');
+                // The auth hook should handle this, but we'll set empty arrays
+                setChats([]);
+                setMatches([]);
+            } else {
+                // For other errors, still set empty arrays but log the error
+                console.error('📋 Chat list fetch error details:', {
+                    message: err?.message,
+                    name: err?.name
+                });
+                setChats([]);
+                setMatches([]);
+            }
         } finally {
             setIsLoading(false);
             setIsRefreshing(false);
@@ -329,7 +352,7 @@ const styles = StyleSheet.create({
         width: 400,
         height: 400,
         borderRadius: 200,
-        backgroundColor: 'rgba(236, 72, 153, 0.03)',
+        backgroundColor: 'rgba(59, 130, 246, 0.03)',
     },
     orb3: {
         position: 'absolute',

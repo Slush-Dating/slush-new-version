@@ -15,6 +15,8 @@ class SocketService {
     private messageHandlers: Set<(message: any) => void> = new Set();
     private matchHandlers: Set<(match: any) => void> = new Set();
     private connectionHandlers: Set<(status: 'connected' | 'disconnected') => void> = new Set();
+    private typingStartHandlers: Set<(userId: string) => void> = new Set();
+    private typingStopHandlers: Set<(userId: string) => void> = new Set();
 
     /**
      * Connect to the socket server
@@ -93,12 +95,14 @@ class SocketService {
         });
 
         // Listen for typing indicators
-        this.socket.on('user_typing', (data: any) => {
-            console.log('✍️ User typing:', data);
+        this.socket.on('typing_start', (userId: string) => {
+            console.log('✍️ User typing:', userId);
+            this.typingStartHandlers.forEach(handler => handler(userId));
         });
 
-        this.socket.on('user_stopped_typing', (data: any) => {
-            console.log('✍️ User stopped typing:', data);
+        this.socket.on('typing_stop', (userId: string) => {
+            console.log('✍️ User stopped typing:', userId);
+            this.typingStopHandlers.forEach(handler => handler(userId));
         });
     }
 
@@ -126,7 +130,7 @@ class SocketService {
      */
     joinRoom(matchId: string): void {
         if (this.socket?.connected) {
-            this.socket.emit('join_room', matchId);
+            this.socket.emit('join_chat', matchId);
             console.log('📍 Joined match room:', matchId);
         }
     }
@@ -136,7 +140,8 @@ class SocketService {
      */
     leaveRoom(matchId: string): void {
         if (this.socket?.connected) {
-            this.socket.emit('leave_room', matchId);
+            // Note: Server doesn't have leave_chat handler, but we can still emit it
+            // or just remove from local tracking
             console.log('📍 Left match room:', matchId);
         }
     }
@@ -146,7 +151,7 @@ class SocketService {
      */
     sendTyping(matchId: string): void {
         if (this.socket?.connected && this.userId) {
-            this.socket.emit('typing', { matchId, userId: this.userId });
+            this.socket.emit('typing_start', matchId);
         }
     }
 
@@ -155,8 +160,74 @@ class SocketService {
      */
     sendStoppedTyping(matchId: string): void {
         if (this.socket?.connected && this.userId) {
-            this.socket.emit('stop_typing', { matchId, userId: this.userId });
+            this.socket.emit('typing_stop', matchId);
         }
+    }
+
+    /**
+     * Send a message via socket with HTTP fallback
+     */
+    async sendMessage(matchId: string, content: string, messageType: 'text' | 'image' | 'system' = 'text'): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (!this.socket?.connected) {
+                reject(new Error('Socket not connected'));
+                return;
+            }
+
+            if (!this.userId) {
+                reject(new Error('Socket not authenticated'));
+                return;
+            }
+
+            console.log('📤 Sending message via socket:', { matchId, content, messageType, userId: this.userId });
+
+            // Set up error handler
+            const errorHandler = (error: string) => {
+                console.error('❌ Socket error when sending message:', error);
+                this.socket?.off('error', errorHandler);
+                this.socket?.off('message_sent', successHandler);
+                reject(new Error(error));
+            };
+
+            // Set up success handler for acknowledgment
+            const successHandler = (data: { messageId: string }) => {
+                console.log('✅ Message sent successfully:', data.messageId);
+                this.socket?.off('error', errorHandler);
+                this.socket?.off('message_sent', successHandler);
+                resolve();
+            };
+
+            this.socket.once('error', errorHandler);
+            this.socket.once('message_sent', successHandler);
+
+            // Emit the message with acknowledgment callback
+            this.socket.emit('send_message', {
+                matchId,
+                content,
+                messageType
+            }, (response: { success: boolean; messageId?: string; error?: string }) => {
+                // Socket.io acknowledgment callback (immediate)
+                this.socket?.off('error', errorHandler);
+                this.socket?.off('message_sent', successHandler);
+
+                if (response?.success) {
+                    resolve();
+                } else if (response?.error) {
+                    reject(new Error(response.error));
+                } else {
+                    // Fallback: resolve immediately (server will broadcast the message)
+                    resolve();
+                }
+            });
+
+            // Timeout fallback in case server doesn't respond with acknowledgment
+            setTimeout(() => {
+                this.socket?.off('error', errorHandler);
+                this.socket?.off('message_sent', successHandler);
+                // Resolve anyway - optimistic UI means message is shown, server will confirm via broadcast
+                resolve();
+            }, 2000);
+        });
     }
 
     /**
@@ -181,6 +252,20 @@ class SocketService {
     }
 
     /**
+     * Register a handler for typing start events
+     */
+    onTypingStart(handler: (userId: string) => void): void {
+        this.typingStartHandlers.add(handler);
+    }
+
+    /**
+     * Register a handler for typing stop events
+     */
+    onTypingStop(handler: (userId: string) => void): void {
+        this.typingStopHandlers.add(handler);
+    }
+
+    /**
      * Remove a specific event handler
      */
     off(event: string, handler: (data: any) => void): void {
@@ -188,6 +273,10 @@ class SocketService {
             this.messageHandlers.delete(handler);
         } else if (event === 'new_match') {
             this.matchHandlers.delete(handler);
+        } else if (event === 'typing_start') {
+            this.typingStartHandlers.delete(handler);
+        } else if (event === 'typing_stop') {
+            this.typingStopHandlers.delete(handler);
         } else if (this.socket) {
             this.socket.off(event, handler);
         }

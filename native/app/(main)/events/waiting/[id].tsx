@@ -168,7 +168,7 @@ export default function WaitingRoomScreen() {
     if (isLoading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#ec4899" />
+                <ActivityIndicator size="large" color="#3B82F6" />
                 <Text style={styles.loadingText}>Preparing waiting room...</Text>
             </View>
         );
@@ -252,7 +252,7 @@ export default function WaitingRoomScreen() {
                     ) : timeToStart !== null ? (
                         <>
                             <View style={styles.countdownRow}>
-                                <Clock size={20} color="#ec4899" />
+                                <Clock size={20} color="#3B82F6" />
                                 <Text style={styles.countdownLabel}>Starting in</Text>
                             </View>
                             <Text style={styles.countdownTime}>
@@ -282,7 +282,7 @@ export default function WaitingRoomScreen() {
                         activeOpacity={0.8}
                     >
                         <LinearGradient
-                            colors={['#ec4899', '#f472b6']}
+                            colors={['#3B82F6', '#60A5FA']}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                             style={styles.joinGradient}

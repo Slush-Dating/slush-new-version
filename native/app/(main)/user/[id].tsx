@@ -330,7 +330,7 @@ export default function UserProfileScreen() {
     if (isLoading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#ec4899" />
+                <ActivityIndicator size="large" color="#3B82F6" />
             </View>
         );
     }
@@ -647,7 +647,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     backLink: {
-        color: '#ec4899',
+        color: '#3B82F6',
         fontSize: 16,
     },
     headerImageContainer: {

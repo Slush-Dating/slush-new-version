@@ -124,8 +124,8 @@ export default function NotificationsScreen() {
         switch (notification.type) {
             case 'like':
                 Icon = Heart;
-                color = '#ec4899';
-                bgColor = 'rgba(236, 72, 153, 0.15)';
+                color = '#3b82f6';
+                bgColor = 'rgba(59, 130, 246, 0.15)';
                 break;
             case 'match':
                 Icon = Heart;
@@ -154,7 +154,7 @@ export default function NotificationsScreen() {
     const getBadgeColor = (type: NotificationData['type']) => {
         switch (type) {
             case 'like':
-                return '#ec4899';
+                return '#3b82f6';
             case 'match':
                 return '#22c55e';
             case 'message':
@@ -218,7 +218,7 @@ export default function NotificationsScreen() {
                     <View style={styles.placeholder} />
                 </View>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#ec4899" />
+                    <ActivityIndicator size="large" color="#3B82F6" />
                 </View>
             </SafeAreaView>
         );
@@ -301,7 +301,7 @@ export default function NotificationsScreen() {
                         <RefreshControl
                             refreshing={isRefreshing}
                             onRefresh={handleRefresh}
-                            tintColor="#ec4899"
+                            tintColor="#3B82F6"
                         />
                     }
                 />
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255, 255, 255, 0.05)',
     },
     filterTabActive: {
-        backgroundColor: 'rgba(236, 72, 153, 0.15)',
+        backgroundColor: 'rgba(59, 130, 246, 0.15)',
     },
     filterText: {
         fontSize: 14,
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
         color: '#64748b',
     },
     filterTextActive: {
-        color: '#ec4899',
+        color: '#3B82F6',
     },
     premiumBanner: {
         marginHorizontal: 16,
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     retryText: {
-        color: '#ec4899',
+        color: '#3B82F6',
         fontSize: 16,
         fontWeight: '500',
     },
@@ -412,9 +412,9 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     unread: {
-        backgroundColor: 'rgba(236, 72, 153, 0.05)',
+        backgroundColor: 'rgba(59, 130, 246, 0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(236, 72, 153, 0.1)',
+        borderColor: 'rgba(59, 130, 246, 0.1)',
     },
     avatar: {
         width: 48,
@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: '#ec4899',
+        backgroundColor: '#3B82F6',
         marginTop: 6,
     },
     emptyContainer: {

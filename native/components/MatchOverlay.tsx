@@ -155,7 +155,7 @@ export function MatchOverlay({
         >
             <Animated.View style={[styles.container, containerStyle]}>
                 <LinearGradient
-                    colors={['rgba(236, 72, 153, 0.9)', 'rgba(139, 92, 246, 0.9)']}
+                    colors={['rgba(59, 130, 246, 0.9)', 'rgba(14, 165, 233, 0.9)']}
                     style={styles.gradient}
                 >
                     <TouchableOpacity
@@ -307,12 +307,12 @@ const styles = StyleSheet.create({
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: '#ec4899',
+        backgroundColor: '#3B82F6',
         justifyContent: 'center',
         alignItems: 'center',
         marginHorizontal: -20,
         zIndex: 10,
-        shadowColor: '#ec4899',
+        shadowColor: '#3B82F6',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.5,
         shadowRadius: 12,

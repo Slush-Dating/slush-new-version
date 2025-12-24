@@ -60,7 +60,7 @@ const PREMIUM_FEATURES = [
         icon: Crown,
         title: 'Premium Badge',
         description: 'Stand out with a distinctive crown on your profile.',
-        color: '#ec4899',
+        color: '#3B82F6',
     },
     {
         icon: Shield,

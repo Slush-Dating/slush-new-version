@@ -26,8 +26,8 @@ interface GradientButtonProps {
 }
 
 const GRADIENT_COLORS = {
-    primary: ['#ec4899', '#f472b6'] as const,
-    secondary: ['#3b82f6', '#60a5fa'] as const,
+    primary: ['#3b82f6', '#60a5fa'] as const,
+    secondary: ['#8B5CF6', '#A78BFA'] as const,
     danger: ['#ef4444', '#f87171'] as const,
 };
 
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     container: {
         borderRadius: 16,
         overflow: 'hidden',
-        shadowColor: '#ec4899',
+        shadowColor: '#3B82F6',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,

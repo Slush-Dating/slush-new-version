@@ -58,7 +58,9 @@ export default function FeedScreen() {
 
         try {
             const feed = await discoveryService.getFeed();
-            setProfiles(feed);
+            // Filter out admin users as a safety measure
+            const filteredFeed = feed.filter(profile => !profile.isAdmin);
+            setProfiles(filteredFeed);
             setCurrentIndex(0);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load feed');
@@ -209,41 +211,63 @@ export default function FeedScreen() {
                     </LinearGradient>
                 </TouchableOpacity>
 
-                {/* Action Buttons (Right Side - TikTok Style) */}
+                {/* Action Buttons (Right Side - Modern Design) */}
                 <View style={styles.rightActions}>
                     <Animated.View style={{ transform: [{ scale: likeScale }] }}>
                         <TouchableOpacity
-                            style={[styles.sideActionButton, styles.likeButton]}
+                            style={styles.actionButtonWrapper}
                             onPress={() => handleAction('like')}
                             disabled={isActionLoading || !isVisible}
-                            activeOpacity={0.8}
+                            activeOpacity={0.7}
                         >
-                            <Heart size={32} color="#ffffff" fill="#ffffff" />
-                            <Text style={styles.actionText}>Like</Text>
+                            <LinearGradient
+                                colors={['rgba(255, 45, 85, 0.9)', 'rgba(255, 20, 60, 0.95)']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                                style={styles.actionButton}
+                            >
+                                <View style={styles.actionButtonInner}>
+                                    <Heart size={26} color="#ffffff" fill="#ffffff" strokeWidth={2} />
+                                </View>
+                            </LinearGradient>
+                            <Text style={styles.actionLabel}>Like</Text>
                         </TouchableOpacity>
                     </Animated.View>
 
                     <Animated.View style={{ transform: [{ scale: icebreakerScale }] }}>
                         <TouchableOpacity
-                            style={[styles.sideActionButton, styles.icebreakerButton]}
+                            style={styles.actionButtonWrapper}
                             onPress={() => handleAction('icebreaker')}
                             disabled={isActionLoading || !isVisible}
-                            activeOpacity={0.8}
+                            activeOpacity={0.7}
                         >
-                            <Snowflake size={28} color="#ffffff" />
-                            <Text style={styles.actionText}>Arctic</Text>
+                            <LinearGradient
+                                colors={['rgba(14, 165, 233, 0.9)', 'rgba(2, 132, 199, 0.95)']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                                style={styles.actionButton}
+                            >
+                                <View style={styles.actionButtonInner}>
+                                    <Snowflake size={24} color="#ffffff" strokeWidth={2.5} />
+                                </View>
+                            </LinearGradient>
+                            <Text style={styles.actionLabel}>Arctic</Text>
                         </TouchableOpacity>
                     </Animated.View>
 
                     <Animated.View style={{ transform: [{ scale: passScale }] }}>
                         <TouchableOpacity
-                            style={[styles.sideActionButton, styles.passButton]}
+                            style={styles.actionButtonWrapper}
                             onPress={() => handleAction('pass')}
                             disabled={isActionLoading || !isVisible}
-                            activeOpacity={0.8}
+                            activeOpacity={0.7}
                         >
-                            <X size={32} color="#ffffff" strokeWidth={3} />
-                            <Text style={styles.actionText}>Pass</Text>
+                            <View style={[styles.actionButton, styles.passButtonGradient]}>
+                                <View style={styles.actionButtonInner}>
+                                    <X size={26} color="#ffffff" strokeWidth={3} />
+                                </View>
+                            </View>
+                            <Text style={styles.actionLabel}>Pass</Text>
                         </TouchableOpacity>
                     </Animated.View>
                 </View>
@@ -453,41 +477,51 @@ const styles = StyleSheet.create({
     },
     rightActions: {
         position: 'absolute',
-        right: 12,
+        right: 16,
         bottom: 180,
         alignItems: 'center',
-        gap: 20,
+        gap: 24,
     },
-    sideActionButton: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+    actionButtonWrapper: {
+        alignItems: 'center',
+        gap: 6,
+    },
+    actionButton: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
         justifyContent: 'center',
         alignItems: 'center',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        elevation: 10,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.25)',
     },
-    likeButton: {
-        backgroundColor: '#ff1493',
+    actionButtonInner: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderRadius: 32,
     },
-    icebreakerButton: {
-        backgroundColor: '#00bfff',
+    passButtonGradient: {
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.35)',
     },
-    passButton: {
-        backgroundColor: '#ff4500',
-    },
-    actionText: {
+    actionLabel: {
         color: '#ffffff',
-        fontSize: 11,
-        fontWeight: '600',
-        marginTop: 2,
+        fontSize: 10,
+        fontWeight: '700',
         textAlign: 'center',
-        textShadowColor: 'rgba(0, 0, 0, 0.5)',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        textShadowColor: 'rgba(0, 0, 0, 0.6)',
         textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 2,
+        textShadowRadius: 3,
+        opacity: 0.95,
     },
     swipeHint: {
         position: 'absolute',

@@ -110,6 +110,7 @@ export interface DiscoveryProfile {
     locationString?: string;
     photos: string[];
     interests: string[];
+    isAdmin?: boolean;
 }
 
 export interface ChatMessage {
@@ -269,23 +270,55 @@ export const eventService = {
 
             const data = await response.json();
 
+            // Log full response structure for debugging
+            console.log('📅 getUserBookings - Response type:', Array.isArray(data) ? 'array' : typeof data);
+            console.log('📅 getUserBookings - Response keys:', data && typeof data === 'object' ? Object.keys(data) : 'N/A');
+            console.log('📅 getUserBookings - Raw response data (full):', JSON.stringify(data, null, 2));
+
             // Handle both array response and diagnostic object response
             let bookings = [];
             if (Array.isArray(data)) {
                 bookings = data;
-                console.log('📅 getUserBookings - Bookings count:', bookings.length);
+                console.log('📅 getUserBookings - Bookings count (array):', bookings.length);
             } else if (data && typeof data === 'object') {
-                if (data.diagnostics) {
-                    console.log('📅 getUserBookings - Diagnostics received:', JSON.stringify(data.diagnostics, null, 2));
-                    bookings = data.bookings || [];
-                } else {
-                    console.log('📅 getUserBookings - Response is object but no diagnostics field found');
+                // Check for debug response format first
+                if (data.bookings !== undefined) {
                     bookings = Array.isArray(data.bookings) ? data.bookings : [];
+                    console.log('📅 getUserBookings - Found bookings in data.bookings:', bookings.length);
+                    if (data.diagnostics) {
+                        console.log('📅 getUserBookings - Diagnostics received:', JSON.stringify(data.diagnostics, null, 2));
+                    }
+                } else if (data.diagnostics) {
+                    // Fallback: check diagnostics first (shouldn't happen but just in case)
+                    console.log('📅 getUserBookings - Diagnostics received (no bookings field):', JSON.stringify(data.diagnostics, null, 2));
+                    bookings = [];
+                } else {
+                    console.log('📅 getUserBookings - Response is object but no bookings/diagnostics fields found');
+                    console.log('📅 getUserBookings - Available keys:', Object.keys(data));
+                    bookings = [];
                 }
-                console.log('📅 getUserBookings - Bookings count (from object):', bookings.length);
+                console.log('📅 getUserBookings - Final bookings count:', bookings.length);
+            } else {
+                console.log('📅 getUserBookings - Unexpected response format:', typeof data);
             }
 
-            console.log('📅 getUserBookings - Raw response data (truncated):', JSON.stringify(data).substring(0, 500));
+            // Log each booking for debugging
+            if (bookings.length > 0) {
+                console.log('📅 getUserBookings - Bookings details:');
+                bookings.forEach((booking, index) => {
+                    console.log(`  Booking ${index}:`, {
+                        _id: booking._id,
+                        eventId: booking.eventId,
+                        eventIdType: typeof booking.eventId,
+                        eventId_id: booking.eventId?._id,
+                        eventName: booking.eventId?.name,
+                        eventDate: booking.eventId?.date,
+                        status: booking.status
+                    });
+                });
+            } else {
+                console.log('📅 getUserBookings - No bookings found in response');
+            }
 
             return bookings;
         } catch (error: any) {
@@ -293,6 +326,27 @@ export const eventService = {
             // Return empty array on network errors too
             return [];
         }
+    },
+
+    async getParticipants(id: string): Promise<{
+        maleParticipants: Array<{ _id: string; name: string; photos?: string[] }>;
+        femaleParticipants: Array<{ _id: string; name: string; photos?: string[] }>;
+        otherParticipants: Array<{ _id: string; name: string; photos?: string[] }>;
+        maleCount: number;
+        femaleCount: number;
+        otherCount: number;
+        totalParticipants: number;
+    }> {
+        const API_BASE_URL = getApiBaseUrl();
+        const headers = await getAuthHeaders();
+
+        const response = await fetch(`${API_BASE_URL}/events/${id}/participants`, { headers });
+
+        if (!response.ok) {
+            return handleApiError(response);
+        }
+
+        return response.json();
     },
 };
 
@@ -443,6 +497,35 @@ export const matchService = {
 // CHAT SERVICE
 // =============================================================================
 
+/**
+ * Fallback helper to construct chat list from matches when chat endpoint is unavailable
+ */
+const getChatListFromMatches = async (): Promise<any[]> => {
+    try {
+        console.log('📋 Using fallback: constructing chat list from matches');
+        const matches = await matchService.getMatches();
+        
+        // Transform matches into chat list format
+        const chatList = matches.map(match => ({
+            matchId: match.id || match.matchId,
+            user: {
+                _id: match.userId,
+                name: match.name,
+                photos: match.imageUrl ? [match.imageUrl] : [],
+                imageUrl: match.imageUrl
+            },
+            lastMessage: match.lastMessage || null,
+            unreadCount: 0 // Can't determine unread count without chat endpoint
+        }));
+
+        console.log('📋 Fallback chat list created:', `${chatList.length} chats from matches`);
+        return chatList;
+    } catch (error) {
+        console.error('📋 Error creating fallback chat list:', error);
+        return [];
+    }
+};
+
 export const chatService = {
     async getMessages(matchId: string, page = 1): Promise<{ messages: ChatMessage[]; hasMore: boolean }> {
         const API_BASE_URL = getApiBaseUrl();
@@ -533,27 +616,97 @@ export const chatService = {
         const headers = await getAuthHeaders();
 
         try {
+            console.log('📋 Fetching chat list from:', `${API_BASE_URL}/chat`);
             const response = await fetch(`${API_BASE_URL}/chat`, { headers });
 
+            console.log('📋 Chat list response status:', response.status);
+
+            // Read response text once (can only read body once)
+            const responseText = await response.text();
+            
             if (!response.ok) {
+                // Handle 404 specifically - endpoint might not be deployed yet
+                if (response.status === 404) {
+                    console.warn('📋 Chat endpoint not found (404) - using fallback from matches');
+                    // Fallback: construct chat list from matches
+                    return getChatListFromMatches();
+                }
+
+                // Try to get error details from response text
+                let errorMessage = `HTTP ${response.status}`;
+                try {
+                    if (responseText) {
+                        const errorData = JSON.parse(responseText);
+                        errorMessage = errorData.message || errorMessage;
+                        console.error('📋 Chat list error response:', errorData);
+                    }
+                } catch (e) {
+                    console.error('📋 Chat list error text:', responseText);
+                    errorMessage = responseText || errorMessage;
+                }
+
+                // Handle specific error cases
+                if (response.status === 401) {
+                    console.error('📋 Unauthorized - token may be expired');
+                    throw new Error('SESSION_EXPIRED');
+                }
+
                 if (response.status === 500) {
-                    // Return empty array for server errors - don't spam console
-                    console.warn('Server error fetching chat list');
-                    return [];
+                    console.error('📋 Server error fetching chat list:', errorMessage);
+                    throw new Error(`Server error: ${errorMessage}`);
                 }
-                if (response.status >= 400 && response.status < 500) {
-                    // Return empty array for client errors - endpoint may not exist or be unavailable
-                    console.warn(`Client error fetching chat list (${response.status})`);
-                    return [];
+
+                if (response.status >= 400 && response.status < 500 && response.status !== 404) {
+                    console.error(`📋 Client error fetching chat list (${response.status}):`, errorMessage);
+                    throw new Error(`Client error: ${errorMessage}`);
                 }
-                return handleApiError(response);
+
+                throw new Error(errorMessage);
             }
 
-            return response.json();
-        } catch (error) {
-            // Return empty array for network errors
-            console.warn('Network error fetching chat list');
-            return [];
+            // Parse successful response
+            let data;
+            try {
+                console.log('📋 Chat list raw response (first 500 chars):', responseText.substring(0, 500));
+                
+                if (!responseText || responseText.trim().length === 0) {
+                    console.warn('📋 Chat list response is empty');
+                    return [];
+                }
+                
+                data = JSON.parse(responseText);
+            } catch (parseError) {
+                console.error('📋 Failed to parse chat list response as JSON:', parseError);
+                console.error('📋 Response text:', responseText);
+                throw new Error('Invalid response format from server');
+            }
+            
+            console.log('📋 Chat list fetched successfully:', Array.isArray(data) ? `${data.length} chats` : 'Invalid format');
+            
+            // Ensure we return an array
+            if (!Array.isArray(data)) {
+                console.warn('📋 Chat list response is not an array:', typeof data, data);
+                return [];
+            }
+
+            return data;
+        } catch (error: any) {
+            // If it's a 404 or network error, try fallback
+            if (error?.message?.includes('404') || error?.message?.includes('Client error: HTTP 404')) {
+                console.warn('📋 Chat endpoint unavailable, using fallback');
+                return getChatListFromMatches();
+            }
+
+            // Log the full error for debugging
+            console.error('📋 Error fetching chat list:', error);
+            console.error('📋 Error details:', {
+                message: error?.message,
+                name: error?.name,
+                stack: error?.stack?.substring(0, 200)
+            });
+            
+            // Re-throw the error so the caller can handle it
+            throw error;
         }
     },
 };

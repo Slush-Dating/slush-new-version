@@ -38,8 +38,12 @@ export default function ChatScreen() {
     const [matchInfo, setMatchInfo] = useState<any>(null);
     const [userProfile, setUserProfile] = useState<any>(null);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+    const [otherUserId, setOtherUserId] = useState<string | null>(null);
 
     const flatListRef = useRef<FlatList>(null);
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const lastTypingSentRef = useRef<number>(0);
 
     // Load current user ID
     useEffect(() => {
@@ -52,7 +56,7 @@ export default function ChatScreen() {
 
     // Fetch messages and match info
     const fetchData = useCallback(async () => {
-        if (!matchId) return;
+        if (!matchId || !currentUserId) return;
 
         try {
             const [messagesData, matchesData] = await Promise.all([
@@ -65,6 +69,11 @@ export default function ChatScreen() {
             // Find match info
             const match = matchesData.find(m => m.matchId === matchId || m.id === matchId);
             setMatchInfo(match);
+
+            // Set other user ID for typing indicators
+            if (match?.userId) {
+                setOtherUserId(match.userId);
+            }
 
             // Fetch full user profile if we have userId
             if (match?.userId) {
@@ -88,13 +97,13 @@ export default function ChatScreen() {
         } finally {
             setIsLoading(false);
         }
-    }, [matchId]);
+    }, [matchId, currentUserId]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
-    // Socket connection for real-time messages
+    // Socket connection for real-time messages and typing indicators
     useEffect(() => {
         if (!matchId || !currentUserId) return;
 
@@ -104,19 +113,98 @@ export default function ChatScreen() {
         // Listen for new messages
         const handleNewMessage = (message: ChatMessage) => {
             if (message.matchId === matchId) {
-                setMessages(prev => [...prev, message]);
+                setMessages(prev => {
+                    // Check for duplicates (optimistic messages)
+                    const isDuplicate = prev.some(m => {
+                        if (m._id === message._id) return true;
+                        if (m._id?.toString().startsWith('temp_')) {
+                            const timeDiff = Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime());
+                            return m.content === message.content && timeDiff < 5000;
+                        }
+                        return false;
+                    });
+
+                    if (isDuplicate) {
+                        // Replace optimistic message with real one
+                        return prev.map(m => {
+                            if (m._id?.toString().startsWith('temp_') && m.content === message.content) {
+                                return message;
+                            }
+                            return m._id === message._id ? message : m;
+                        });
+                    }
+
+                    return [...prev, message];
+                });
                 // Mark as read
                 chatService.markAsRead(matchId);
             }
         };
 
+        // Listen for typing indicators
+        const handleTypingStart = (userId: string) => {
+            if (userId === otherUserId) {
+                setIsOtherUserTyping(true);
+            }
+        };
+
+        const handleTypingStop = (userId: string) => {
+            if (userId === otherUserId) {
+                setIsOtherUserTyping(false);
+            }
+        };
+
         socketService.onNewMessage(handleNewMessage);
+        socketService.onTypingStart(handleTypingStart);
+        socketService.onTypingStop(handleTypingStop);
 
         return () => {
             socketService.leaveRoom(matchId);
             socketService.off('new_message', handleNewMessage);
+            socketService.off('typing_start', handleTypingStart);
+            socketService.off('typing_stop', handleTypingStop);
+            // Cleanup typing timeout
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+            // Stop typing indicator on unmount
+            if (matchId) {
+                socketService.sendStoppedTyping(matchId);
+            }
         };
-    }, [matchId, currentUserId]);
+    }, [matchId, currentUserId, otherUserId]);
+
+    // Handle typing detection with debouncing
+    const handleInputChange = (text: string) => {
+        setInputText(text);
+
+        // Clear existing timeout
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+
+        // Send typing indicator if user is typing
+        if (text.trim().length > 0 && matchId) {
+            const now = Date.now();
+            // Throttle typing indicators (send max once per 2 seconds)
+            if (now - lastTypingSentRef.current > 2000) {
+                socketService.sendTyping(matchId);
+                lastTypingSentRef.current = now;
+            }
+
+            // Set timeout to stop typing indicator
+            typingTimeoutRef.current = setTimeout(() => {
+                if (matchId) {
+                    socketService.sendStoppedTyping(matchId);
+                }
+            }, 2000);
+        } else {
+            // Stop typing if input is empty
+            if (matchId) {
+                socketService.sendStoppedTyping(matchId);
+            }
+        }
+    };
 
     const handleSend = async () => {
         if (!inputText.trim() || !matchId || isSending) return;
@@ -126,9 +214,61 @@ export default function ChatScreen() {
         setIsSending(true);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+        // Stop typing indicator
+        if (matchId) {
+            socketService.sendStoppedTyping(matchId);
+        }
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+
+        // Create optimistic message
+        const tempId = `temp_${Date.now()}`;
+        const optimisticMessage: ChatMessage = {
+            _id: tempId,
+            matchId,
+            senderId: currentUserId!,
+            receiverId: otherUserId || '',
+            content: messageText,
+            messageType: 'text',
+            createdAt: new Date().toISOString(),
+            isRead: false,
+        };
+
+        setMessages(prev => [...prev, optimisticMessage]);
+
         try {
-            const newMessage = await chatService.sendMessage(matchId, messageText);
-            setMessages(prev => [...prev, newMessage]);
+            // Try socket first, fallback to HTTP if socket not connected
+            console.log('📤 Sending message, socket connected:', socketService.isConnected());
+            if (socketService.isConnected()) {
+                try {
+                    console.log('📤 Sending via socket...');
+                    await socketService.sendMessage(matchId, messageText, 'text');
+                    console.log('✅ Message sent via socket');
+                    // Socket will broadcast the message back, we'll deduplicate by content+time
+                } catch (socketErr: any) {
+                    console.log('❌ Socket send failed:', socketErr.message);
+                    // If socket fails, fallback to HTTP
+                    if (socketErr.message === 'Socket not connected') {
+                        console.log('🔄 Falling back to HTTP API');
+                        const message = await chatService.sendMessage(matchId, messageText);
+                        // Replace optimistic message with real one
+                        setMessages(prev => prev.map(m =>
+                            m._id === tempId ? message : m
+                        ));
+                    } else {
+                        throw socketErr;
+                    }
+                }
+            } else {
+                console.log('🔄 Socket not connected, using HTTP API');
+                // Use HTTP API as fallback
+                const message = await chatService.sendMessage(matchId, messageText);
+                // Replace optimistic message with real one
+                setMessages(prev => prev.map(m =>
+                    m._id === tempId ? message : m
+                ));
+            }
 
             // Scroll to bottom
             setTimeout(() => {
@@ -137,6 +277,8 @@ export default function ChatScreen() {
         } catch (err) {
             console.error('Failed to send message:', err);
             setInputText(messageText); // Restore message on error
+            // Remove optimistic message on error
+            setMessages(prev => prev.filter(m => m._id !== tempId));
         } finally {
             setIsSending(false);
         }
@@ -240,6 +382,13 @@ export default function ChatScreen() {
                     onContentSizeChange={() => {
                         flatListRef.current?.scrollToEnd({ animated: false });
                     }}
+                    ListFooterComponent={
+                        isOtherUserTyping ? (
+                            <View style={styles.typingIndicator}>
+                                <Text style={styles.typingText}>typing...</Text>
+                            </View>
+                        ) : null
+                    }
                 />
 
                 {/* Input */}
@@ -249,7 +398,7 @@ export default function ChatScreen() {
                         placeholder="Type a message..."
                         placeholderTextColor={colors.textTertiary}
                         value={inputText}
-                        onChangeText={setInputText}
+                        onChangeText={handleInputChange}
                         multiline
                         maxLength={1000}
                     />
@@ -364,7 +513,7 @@ const styles = StyleSheet.create({
         borderRadius: 18,
     },
     bubbleMe: {
-        backgroundColor: colors.pink,
+        backgroundColor: colors.primary,
         borderBottomRightRadius: 4,
     },
     bubbleOther: {
@@ -415,11 +564,21 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: colors.pink,
+        backgroundColor: colors.primary,
         justifyContent: 'center',
         alignItems: 'center',
     },
     sendButtonDisabled: {
         backgroundColor: colors.bgAccent,
+    },
+    typingIndicator: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        alignItems: 'flex-start',
+    },
+    typingText: {
+        fontSize: 12,
+        fontStyle: 'italic',
+        color: colors.textTertiary,
     },
 });

@@ -1,6 +1,8 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 import User from '../models/User.js';
 import Match from '../models/Match.js';
 
@@ -120,7 +122,7 @@ router.get('/feed', authenticate, async (req, res) => {
         const potentialMatches = await User.find(query)
             .limit(limit)
             .sort({ createdAt: 1 }) // Sort by creation date for consistency
-            .select('name dob gender bio photos videos interests location')
+            .select('name dob gender bio photos videos interests location isAdmin email')
             .lean();
 
         console.log(`[Discovery Feed] User ${userId} - Returning ${potentialMatches.length} profiles`);
@@ -189,7 +191,8 @@ router.get('/feed', authenticate, async (req, res) => {
                 distance,
                 locationString,
                 photos: user.photos || [],
-                interests: user.interests || []
+                interests: user.interests || [],
+                isAdmin: user.isAdmin || false
             };
         });
 

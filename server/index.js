@@ -19,6 +19,8 @@ import notificationRoutes from './routes/notifications.js';
 import adminRoutes from './routes/admin.js';
 import Message from './models/Message.js';
 import Match from './models/Match.js';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -74,6 +76,13 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Slush Dating API Documentation',
+  customfavIcon: '/favicon.ico'
+}));
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {

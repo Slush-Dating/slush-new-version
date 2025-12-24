@@ -32,7 +32,28 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-// Get unread message counts grouped by match
+/**
+ * @swagger
+ * /api/chat/unread/by-match:
+ *   get:
+ *     summary: Get unread message counts by match
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get unread message counts grouped by match ID.
+ *     responses:
+ *       200:
+ *         description: Unread counts by match
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 unreadByMatch:
+ *                   type: object
+ *                   additionalProperties:
+ *                     type: number
+ */
 router.get('/unread/by-match', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId;
@@ -139,7 +160,35 @@ router.get('/unread/count', authenticateToken, async (req, res) => {
     }
 });
 
-// Get chat list (all conversations for the authenticated user)
+/**
+ * @swagger
+ * /api/chat:
+ *   get:
+ *     summary: Get chat list
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get all conversations (matches) for the authenticated user with last message and unread counts.
+ *     responses:
+ *       200:
+ *         description: List of conversations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   matchId:
+ *                     type: string
+ *                   user:
+ *                     type: object
+ *                   lastMessage:
+ *                     type: object
+ *                     nullable: true
+ *                   unreadCount:
+ *                     type: number
+ */
 router.get('/', authenticateToken, async (req, res) => {
     try {
         console.log('📋 GET /api/chat - Fetching chat list');
@@ -253,7 +302,54 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 });
 
-// Get chat history for a match
+/**
+ * @swagger
+ * /api/chat/{matchId}:
+ *   get:
+ *     summary: Get chat history
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: matchId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Match ID
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of messages per page
+ *     responses:
+ *       200:
+ *         description: Chat history with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 messages:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Message'
+ *                 hasMore:
+ *                   type: boolean
+ *                 page:
+ *                   type: number
+ *       403:
+ *         description: Unauthorized access to chat
+ *       404:
+ *         description: Match not found
+ */
 router.get('/:matchId', authenticateToken, async (req, res) => {
     try {
         const { matchId } = req.params;

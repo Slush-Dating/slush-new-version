@@ -39,7 +39,44 @@ const getRelativeTime = (date) => {
     return new Date(date).toLocaleDateString();
 };
 
-// GET /api/notifications - Get all notifications for user
+/**
+ * @swagger
+ * /api/notifications:
+ *   get:
+ *     summary: Get all notifications
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get all notifications for the authenticated user. Premium users see full details for 'like' notifications, non-premium see anonymous.
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [like, match, general, all]
+ *         description: Filter by notification type
+ *       - in: query
+ *         name: unreadOnly
+ *         schema:
+ *           type: boolean
+ *         description: Return only unread notifications
+ *     responses:
+ *       200:
+ *         description: List of notifications
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 notifications:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Notification'
+ *                 isPremium:
+ *                   type: boolean
+ *                 unreadCount:
+ *                   type: number
+ */
 router.get('/', authenticate, async (req, res) => {
     try {
         const userId = req.userId;
@@ -127,7 +164,26 @@ router.get('/', authenticate, async (req, res) => {
     }
 });
 
-// GET /api/notifications/unread-count - Get unread notification count
+/**
+ * @swagger
+ * /api/notifications/unread-count:
+ *   get:
+ *     summary: Get unread notification count
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get the count of unread notifications for the authenticated user.
+ *     responses:
+ *       200:
+ *         description: Unread count
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 unreadCount:
+ *                   type: number
+ */
 router.get('/unread-count', authenticate, async (req, res) => {
     try {
         const count = await Notification.countDocuments({

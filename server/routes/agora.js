@@ -27,7 +27,51 @@ const authMiddleware = async (req, res, next) => {
     }
 };
 
-// Generate Agora RTC token
+/**
+ * @swagger
+ * /api/agora/token:
+ *   post:
+ *     summary: Generate Agora RTC token
+ *     tags: [Agora]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Generate an Agora RTC token for video/audio communication. Token expires in 24 hours.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - channelName
+ *             properties:
+ *               channelName:
+ *                 type: string
+ *                 description: Agora channel name
+ *               uid:
+ *                 type: integer
+ *                 description: Optional user ID (auto-generated if not provided)
+ *     responses:
+ *       200:
+ *         description: Agora token generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 appId:
+ *                   type: string
+ *                 channelName:
+ *                   type: string
+ *                 uid:
+ *                   type: integer
+ *       400:
+ *         description: Channel name required
+ *       500:
+ *         description: Agora service not configured
+ */
 router.post('/token', authMiddleware, async (req, res) => {
     try {
         const { channelName, uid } = req.body;
@@ -72,7 +116,52 @@ router.post('/token', authMiddleware, async (req, res) => {
     }
 });
 
-// Get next partner for event session
+/**
+ * @swagger
+ * /api/agora/event/{eventId}/next-partner:
+ *   post:
+ *     summary: Get next partner for event session
+ *     tags: [Agora]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get a random partner for video chat during an event session. User must be booked for the event.
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Event ID
+ *     responses:
+ *       200:
+ *         description: Partner found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 partner:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     userId:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     age:
+ *                       type: number
+ *                     bio:
+ *                       type: string
+ *                     imageUrl:
+ *                       type: string
+ *                 totalAvailable:
+ *                   type: number
+ *       403:
+ *         description: User not booked for this event
+ *       404:
+ *         description: Event not found or no partners available
+ */
 router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => {
     try {
         const { eventId } = req.params;

@@ -50,7 +50,55 @@ const getOrCreateMatch = async (user1Id, user2Id) => {
     return match;
 };
 
-// POST /api/matches/action - Like, pass, or super like a user
+/**
+ * @swagger
+ * /api/matches/action:
+ *   post:
+ *     summary: Like, pass, or super like a user
+ *     tags: [Matches]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Perform an action (like, pass, or super_like) on a user. Creates a match if both users like each other.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - toUserId
+ *               - action
+ *               - context
+ *             properties:
+ *               toUserId:
+ *                 type: string
+ *               action:
+ *                 type: string
+ *                 enum: [like, pass, super_like]
+ *               context:
+ *                 type: string
+ *                 enum: [video_feed, live_event]
+ *               eventId:
+ *                 type: string
+ *                 description: Optional event ID if action is from live event
+ *     responses:
+ *       200:
+ *         description: Action processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 action:
+ *                   type: string
+ *                 isMatch:
+ *                   type: boolean
+ *                 match:
+ *                   $ref: '#/components/schemas/Match'
+ *                   nullable: true
+ */
 router.post('/action', authenticate, async (req, res) => {
     try {
         const { toUserId, action, context, eventId } = req.body;
@@ -247,7 +295,25 @@ router.post('/action', authenticate, async (req, res) => {
     }
 });
 
-// GET /api/matches - Get all matches for the authenticated user
+/**
+ * @swagger
+ * /api/matches:
+ *   get:
+ *     summary: Get all matches for authenticated user
+ *     tags: [Matches]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Retrieve all matches for the authenticated user. Includes last message and match metadata.
+ *     responses:
+ *       200:
+ *         description: List of matches
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Match'
+ */
 router.get('/', authenticate, async (req, res) => {
     try {
         const userId = req.userId;
@@ -346,7 +412,43 @@ router.get('/', authenticate, async (req, res) => {
     }
 });
 
-// GET /api/matches/liked-you - Get users who liked the current user but haven't matched yet
+/**
+ * @swagger
+ * /api/matches/liked-you:
+ *   get:
+ *     summary: Get users who liked you
+ *     tags: [Matches]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get users who have liked the current user but haven't matched yet. Useful for "Likes You" feature.
+ *     responses:
+ *       200:
+ *         description: List of users who liked you
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                   userId:
+ *                     type: string
+ *                   name:
+ *                     type: string
+ *                   age:
+ *                     type: number
+ *                   imageUrl:
+ *                     type: string
+ *                   bio:
+ *                     type: string
+ *                   likedAt:
+ *                     type: string
+ *                     format: date-time
+ *                   isSuperLike:
+ *                     type: boolean
+ */
 router.get('/liked-you', authenticate, async (req, res) => {
     try {
         const userId = req.userId;
@@ -433,7 +535,30 @@ router.get('/liked-you', authenticate, async (req, res) => {
     }
 });
 
-// GET /api/matches/stats - Get match statistics
+/**
+ * @swagger
+ * /api/matches/stats:
+ *   get:
+ *     summary: Get match statistics
+ *     tags: [Matches]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get statistics about matches, likes given, and likes received.
+ *     responses:
+ *       200:
+ *         description: Match statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalMatches:
+ *                   type: number
+ *                 likesGiven:
+ *                   type: number
+ *                 likesReceived:
+ *                   type: number
+ */
 router.get('/stats', authenticate, async (req, res) => {
     try {
         const userId = req.userId;
@@ -553,7 +678,29 @@ router.get('/:matchId', authenticate, async (req, res) => {
     }
 });
 
-// POST /api/matches/unmatch/:userId - Unmatch with a user
+/**
+ * @swagger
+ * /api/matches/unmatch/{userId}:
+ *   post:
+ *     summary: Unmatch with a user
+ *     tags: [Matches]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID to unmatch with
+ *     responses:
+ *       200:
+ *         description: Successfully unmatched
+ *       400:
+ *         description: Cannot unmatch yourself
+ *       404:
+ *         description: No match found
+ */
 router.post('/unmatch/:userId', authenticate, async (req, res) => {
     try {
         const { userId: targetUserId } = req.params;
@@ -590,7 +737,47 @@ router.post('/unmatch/:userId', authenticate, async (req, res) => {
     }
 });
 
-// POST /api/matches/report/:userId - Report a user
+/**
+ * @swagger
+ * /api/matches/report/{userId}:
+ *   post:
+ *     summary: Report a user
+ *     tags: [Matches]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID to report
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               context:
+ *                 type: string
+ *                 default: profile
+ *               referenceId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Report submitted successfully
+ *       400:
+ *         description: Cannot report yourself or already reported recently
+ *       404:
+ *         description: User not found
+ */
 router.post('/report/:userId', authenticate, async (req, res) => {
     try {
         const { userId: targetUserId } = req.params;

@@ -24,7 +24,55 @@ const authenticate = (req, res, next) => {
     }
 };
 
-// GET /api/discovery/feed - Get discovery feed (potential matches)
+/**
+ * @swagger
+ * /api/discovery/feed:
+ *   get:
+ *     summary: Get discovery feed
+ *     tags: [Discovery]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get potential matches for the discovery feed. Excludes already matched users and admin users.
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Maximum number of profiles to return
+ *     responses:
+ *       200:
+ *         description: List of potential matches
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                   userId:
+ *                     type: string
+ *                   name:
+ *                     type: string
+ *                   age:
+ *                     type: number
+ *                   bio:
+ *                     type: string
+ *                   videoUrl:
+ *                     type: string
+ *                   thumbnail:
+ *                     type: string
+ *                   distance:
+ *                     type: string
+ *                   locationString:
+ *                     type: string
+ *                   photos:
+ *                     type: array
+ *                   interests:
+ *                     type: array
+ */
 router.get('/feed', authenticate, async (req, res) => {
     try {
         const userId = req.userId;
@@ -152,7 +200,60 @@ router.get('/feed', authenticate, async (req, res) => {
     }
 });
 
-// GET /api/discovery/event-partners - Get potential partners for an event
+/**
+ * @swagger
+ * /api/discovery/event-partners:
+ *   get:
+ *     summary: Get potential partners for an event
+ *     tags: [Discovery]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get potential partners for a specific event, filtered by event type and user preferences.
+ *     parameters:
+ *       - in: query
+ *         name: eventId
+ *         schema:
+ *           type: string
+ *         description: Event ID to find partners for
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Maximum number of partners to return
+ *     responses:
+ *       200:
+ *         description: List of potential event partners
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                   userId:
+ *                     type: string
+ *                   name:
+ *                     type: string
+ *                   age:
+ *                     type: number
+ *                   bio:
+ *                     type: string
+ *                   imageUrl:
+ *                     type: string
+ *                   videoUrl:
+ *                     type: string
+ *                   thumbnail:
+ *                     type: string
+ *                   locationString:
+ *                     type: string
+ *                   photos:
+ *                     type: array
+ *                   interests:
+ *                     type: array
+ */
 router.get('/event-partners', authenticate, async (req, res) => {
     try {
         const userId = req.userId;

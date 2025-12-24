@@ -12,7 +12,29 @@ import imageProcessor from '../utils/imageProcessor.js';
 
 const router = express.Router();
 
-// Health check endpoint for video processing
+/**
+ * @swagger
+ * /api/auth/health/ffmpeg:
+ *   get:
+ *     summary: Check FFmpeg availability
+ *     tags: [Auth]
+ *     description: Health check endpoint to verify if FFmpeg is available for video processing
+ *     responses:
+ *       200:
+ *         description: FFmpeg status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ffmpeg:
+ *                   type: object
+ *                   properties:
+ *                     available:
+ *                       type: boolean
+ *                     version:
+ *                       type: string
+ */
 router.get('/health/ffmpeg', async (req, res) => {
     try {
         const isAvailable = await videoProcessor.checkFfmpegAvailable();
@@ -81,7 +103,50 @@ const upload = multer({
     }
 });
 
-// Register
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Auth]
+ *     description: Create a new user account. Returns JWT token and user data.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *                 example: password123
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: User already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/register', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -106,7 +171,49 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// Login
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Login user
+ *     tags: [Auth]
+ *     description: Authenticate user and receive JWT token. Token expires in 7 days.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *               password:
+ *                 type: string
+ *                 example: password123
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Invalid credentials
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/login', async (req, res) => {
     try {
         console.log('🔐 Login attempt for email:', req.body.email);
@@ -158,7 +265,63 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// Update Onboarding
+/**
+ * @swagger
+ * /api/auth/onboarding:
+ *   put:
+ *     summary: Update user onboarding data
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Update user profile during onboarding. Set finalStep=true to mark onboarding as completed.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               dob:
+ *                 type: string
+ *                 format: date
+ *               gender:
+ *                 type: string
+ *                 enum: [man, woman, non-binary, other]
+ *               interestedIn:
+ *                 type: string
+ *                 enum: [men, women, everyone]
+ *               bio:
+ *                 type: string
+ *               interests:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               photos:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               videos:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               finalStep:
+ *                 type: boolean
+ *                 description: Set to true to mark onboarding as completed
+ *     responses:
+ *       200:
+ *         description: Onboarding updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized - No token provided
+ */
 router.put('/onboarding', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -205,7 +368,27 @@ router.put('/onboarding', async (req, res) => {
     }
 });
 
-// Get Profile
+/**
+ * @swagger
+ * /api/auth/profile:
+ *   get:
+ *     summary: Get current user's profile
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Retrieve the authenticated user's profile information
+ *     responses:
+ *       200:
+ *         description: Profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized - No token provided
+ *       404:
+ *         description: User not found
+ */
 router.get('/profile', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -247,7 +430,36 @@ router.get('/profile', async (req, res) => {
     }
 });
 
-// Get another user's profile (anyone can view profiles)
+/**
+ * @swagger
+ * /api/auth/profile/{userId}:
+ *   get:
+ *     summary: Get another user's profile
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     description: View another user's public profile. Cannot view your own profile (use /profile instead).
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The user ID to view
+ *     responses:
+ *       200:
+ *         description: Profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Cannot view your own profile through this endpoint
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
 router.get('/profile/:userId', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -301,7 +513,65 @@ router.get('/profile/:userId', async (req, res) => {
     }
 });
 
-// Upload File with Processing
+/**
+ * @swagger
+ * /api/auth/upload:
+ *   post:
+ *     summary: Upload image or video file
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Upload and process image or video files. Images are compressed and resized. Videos are compressed and thumbnails are generated (if FFmpeg is available).
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Image (JPEG, PNG, WebP) or Video (MP4, MOV). Max 100MB.
+ *     responses:
+ *       200:
+ *         description: File uploaded and processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 url:
+ *                   type: string
+ *                   description: URL to the processed file
+ *                 thumbnailUrl:
+ *                   type: string
+ *                   description: URL to thumbnail (for videos)
+ *                 mediumUrl:
+ *                   type: string
+ *                   description: Medium size URL (for images)
+ *                 originalUrl:
+ *                   type: string
+ *                 type:
+ *                   type: string
+ *                   enum: [image, video]
+ *                 duration:
+ *                   type: number
+ *                   description: Video duration in seconds
+ *                 width:
+ *                   type: number
+ *                 height:
+ *                   type: number
+ *                 compressionRatio:
+ *                   type: number
+ *                   description: Compression percentage
+ *       400:
+ *         description: Invalid file or file too large
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/upload', (req, res) => {
     // Verify authentication
     const authHeader = req.headers.authorization;
@@ -443,7 +713,54 @@ router.post('/upload', (req, res) => {
     });
 });
 
-// Admin Login
+/**
+ * @swagger
+ * /api/auth/admin/login:
+ *   post:
+ *     summary: Admin login
+ *     tags: [Auth]
+ *     description: Login for admin users. Requires admin privileges.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Admin login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     isAdmin:
+ *                       type: boolean
+ *       400:
+ *         description: Invalid credentials
+ *       403:
+ *         description: Access denied - Admin privileges required
+ */
 router.post('/admin/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -479,7 +796,32 @@ router.post('/admin/login', async (req, res) => {
     }
 });
 
-// Mock Upgrade to Premium
+/**
+ * @swagger
+ * /api/auth/upgrade-mock:
+ *   post:
+ *     summary: Mock premium upgrade (for testing)
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Upgrade user to premium status. This is a mock endpoint for testing purposes.
+ *     responses:
+ *       200:
+ *         description: Upgraded to premium successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
 router.post('/upgrade-mock', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;

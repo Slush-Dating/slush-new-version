@@ -25,7 +25,29 @@ const authMiddleware = async (req, res, next) => {
     }
 };
 
-// GET all events (only upcoming ones by default, use ?includeAll=true for all)
+/**
+ * @swagger
+ * /api/events:
+ *   get:
+ *     summary: Get all events
+ *     tags: [Events]
+ *     description: Retrieve all events. By default returns only upcoming events. Use ?includeAll=true to get all events including past ones.
+ *     parameters:
+ *       - in: query
+ *         name: includeAll
+ *         schema:
+ *           type: boolean
+ *         description: Set to true to include past events
+ *     responses:
+ *       200:
+ *         description: List of events
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Event'
+ */
 router.get('/', async (req, res) => {
     try {
         const includeAll = req.query.includeAll === 'true';
@@ -53,29 +75,128 @@ router.get('/', async (req, res) => {
     }
 });
 
-// GET user's current bookings - MUST be before /:id route to avoid route conflict
+/**
+ * @swagger
+ * /api/events/user/bookings:
+ *   get:
+ *     summary: Get user's event bookings
+ *     tags: [Events]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get all active bookings for the authenticated user. Only returns bookings for future events.
+ *     parameters:
+ *       - in: query
+ *         name: debug
+ *         schema:
+ *           type: boolean
+ *         description: Set to true to include diagnostic information
+ *     responses:
+ *       200:
+ *         description: List of user's bookings
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                   eventId:
+ *                     $ref: '#/components/schemas/Event'
+ *                   userId:
+ *                     type: string
+ *                   status:
+ *                     type: string
+ *                   bookedAt:
+ *                     type: string
+ *                     format: date-time
+ */
 router.get('/user/bookings', authMiddleware, async (req, res) => {
     try {
+        console.log('[Events API] Fetching bookings for userId:', req.userId);
+
         const bookings = await EventBooking.find({
             userId: req.userId,
             status: 'booked'
         })
-        .populate('eventId', '_id name date location imageUrl description eventType minAge maxAge maleCount femaleCount otherCount maxMaleParticipants maxFemaleParticipants isPasswordProtected status')
-        .sort({ bookedAt: -1 });
+            .populate('eventId', '_id name date location imageUrl description eventType minAge maxAge maleCount femaleCount otherCount maxMaleParticipants maxFemaleParticipants isPasswordProtected status')
+            .sort({ bookedAt: -1 });
+
+        console.log('[Events API] Total bookings found (before date filter):', bookings.length);
+
+        // Log individual bookings for debugging
+        bookings.forEach((b, i) => {
+            console.log(`[Events API] Booking ${i}: EventId=${b.eventId?._id}, EventName=${b.eventId?.name}, EventDate=${b.eventId?.date}, Status=${b.status}`);
+        });
 
         // Filter out bookings for events that have already passed
         const now = new Date();
+        console.log('[Events API] Current server time (now):', now.toISOString());
+
         const activeBookings = bookings.filter(booking => {
-            return booking.eventId && booking.eventId.date > now;
+            if (!booking.eventId) {
+                console.log('[Events API] Booking filtered out: no eventId populated');
+                return false;
+            }
+            const eventDate = new Date(booking.eventId.date);
+            const isFuture = eventDate > now;
+            console.log(`[Events API] Comparing eventDate (${eventDate.toISOString()}) > now (${now.toISOString()}): ${isFuture}`);
+            return isFuture;
         });
+
+        console.log('[Events API] Active bookings (after date filter):', activeBookings.length);
+
+        // Create a diagnostic object to help debug
+        const diagnostics = {
+            userId: req.userId,
+            serverTime: now.toISOString(),
+            totalBookingsBeforeFilter: bookings.length,
+            filteredOutCount: bookings.length - activeBookings.length
+        };
+
+        // For backwards compatibility and easier client handling, 
+        // we'll return the array but add a custom header or log it
+        console.log('[Events API] Diagnostics:', diagnostics);
+
+        // Let's actually wrap the response to include diagnostics if a query param is present
+        if (req.query.debug === 'true') {
+            return res.json({
+                bookings: activeBookings,
+                diagnostics
+            });
+        }
 
         res.json(activeBookings);
     } catch (err) {
+        console.error('[Events API] Error fetching user bookings:', err);
         res.status(500).json({ message: err.message });
     }
 });
 
-// GET a single event by ID
+/**
+ * @swagger
+ * /api/events/{id}:
+ *   get:
+ *     summary: Get event by ID
+ *     tags: [Events]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Event ID
+ *     responses:
+ *       200:
+ *         description: Event details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Event'
+ *       404:
+ *         description: Event not found
+ */
 router.get('/:id', async (req, res) => {
     try {
         const event = await Event.findById(req.params.id);
@@ -88,7 +209,44 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// GET event participants
+/**
+ * @swagger
+ * /api/events/{id}/participants:
+ *   get:
+ *     summary: Get event participants
+ *     tags: [Events]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Event ID
+ *     responses:
+ *       200:
+ *         description: Event participants grouped by gender
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 maleParticipants:
+ *                   type: array
+ *                 femaleParticipants:
+ *                   type: array
+ *                 otherParticipants:
+ *                   type: array
+ *                 maleCount:
+ *                   type: number
+ *                 femaleCount:
+ *                   type: number
+ *                 otherCount:
+ *                   type: number
+ *                 totalParticipants:
+ *                   type: number
+ *       404:
+ *         description: Event not found
+ */
 router.get('/:id/participants', async (req, res) => {
     try {
         const event = await Event.findById(req.params.id)
@@ -116,7 +274,51 @@ router.get('/:id/participants', async (req, res) => {
     }
 });
 
-// POST book event ticket
+/**
+ * @swagger
+ * /api/events/{id}/book:
+ *   post:
+ *     summary: Book an event ticket
+ *     tags: [Events]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Event ID
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 description: Required if event is password protected
+ *     responses:
+ *       201:
+ *         description: Successfully booked
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 booking:
+ *                   type: object
+ *                 event:
+ *                   type: object
+ *       400:
+ *         description: Validation error (age, orientation, capacity, etc.)
+ *       401:
+ *         description: Unauthorized or incorrect password
+ *       404:
+ *         description: Event not found
+ */
 router.post('/:id/book', authMiddleware, async (req, res) => {
     try {
         const event = await Event.findById(req.params.id);
@@ -244,6 +446,8 @@ router.post('/:id/book', authMiddleware, async (req, res) => {
 
         await event.save();
 
+        console.log('[Events API] Creating booking for user:', req.userId, 'event:', event._id);
+
         // Create booking record
         const booking = new EventBooking({
             eventId: event._id,
@@ -251,6 +455,7 @@ router.post('/:id/book', authMiddleware, async (req, res) => {
             userGender: userGender
         });
         await booking.save();
+        console.log('[Events API] Booking created successfully:', booking._id);
 
         res.status(201).json({
             message: 'Successfully booked',
@@ -273,7 +478,27 @@ router.post('/:id/book', authMiddleware, async (req, res) => {
     }
 });
 
-// DELETE cancel booking
+/**
+ * @swagger
+ * /api/events/{id}/book:
+ *   delete:
+ *     summary: Cancel event booking
+ *     tags: [Events]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Event ID
+ *     responses:
+ *       200:
+ *         description: Booking cancelled successfully
+ *       404:
+ *         description: Booking not found
+ */
 router.delete('/:id/book', authMiddleware, async (req, res) => {
     try {
         const event = await Event.findById(req.params.id);
@@ -311,7 +536,35 @@ router.delete('/:id/book', authMiddleware, async (req, res) => {
     }
 });
 
-// GET check if user has booked
+/**
+ * @swagger
+ * /api/events/{id}/booking-status:
+ *   get:
+ *     summary: Check if user has booked event
+ *     tags: [Events]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Event ID
+ *     responses:
+ *       200:
+ *         description: Booking status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 isBooked:
+ *                   type: boolean
+ *                 booking:
+ *                   type: object
+ *                   nullable: true
+ */
 router.get('/:id/booking-status', authMiddleware, async (req, res) => {
     try {
         const booking = await EventBooking.findOne({

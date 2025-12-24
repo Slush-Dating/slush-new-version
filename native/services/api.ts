@@ -225,11 +225,13 @@ export const eventService = {
         const headers = await getAuthHeaders();
         const token = await getToken();
 
-        console.log('📅 getUserBookings - API URL:', `${API_BASE_URL}/events/user/bookings`);
+        // Use debug=true to get diagnostic info from the server
+        const url = `${API_BASE_URL}/events/user/bookings?debug=true`;
+        console.log('📅 getUserBookings - API URL:', url);
         console.log('📅 getUserBookings - Token present:', !!token, token ? `(starts with: ${token.substring(0, 20)}...)` : '');
 
         try {
-            const response = await fetch(`${API_BASE_URL}/events/user/bookings`, { headers });
+            const response = await fetch(url, { headers });
 
             console.log('📅 getUserBookings - Response status:', response.status);
 
@@ -266,10 +268,26 @@ export const eventService = {
             }
 
             const data = await response.json();
-            console.log('📅 getUserBookings - Raw response data:', JSON.stringify(data).substring(0, 200));
-            console.log('📅 getUserBookings - Bookings count:', Array.isArray(data) ? data.length : 'not an array');
 
-            return data;
+            // Handle both array response and diagnostic object response
+            let bookings = [];
+            if (Array.isArray(data)) {
+                bookings = data;
+                console.log('📅 getUserBookings - Bookings count:', bookings.length);
+            } else if (data && typeof data === 'object') {
+                if (data.diagnostics) {
+                    console.log('📅 getUserBookings - Diagnostics received:', JSON.stringify(data.diagnostics, null, 2));
+                    bookings = data.bookings || [];
+                } else {
+                    console.log('📅 getUserBookings - Response is object but no diagnostics field found');
+                    bookings = Array.isArray(data.bookings) ? data.bookings : [];
+                }
+                console.log('📅 getUserBookings - Bookings count (from object):', bookings.length);
+            }
+
+            console.log('📅 getUserBookings - Raw response data (truncated):', JSON.stringify(data).substring(0, 500));
+
+            return bookings;
         } catch (error: any) {
             console.error('📅 Network error fetching bookings:', error);
             // Return empty array on network errors too

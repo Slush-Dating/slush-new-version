@@ -22,6 +22,6 @@
     "native:build:prod": "cd apps/native && eas build --profile production",
     "server:dev": "npm run dev -w packages/server",
     "install:all": "npm install",
-    "create:branch": "node -e \"const [,,type,component,name] = process.argv; const branch = \`\${type}/\${component}-\${name}\`; console.log(\`Creating branch: \${branch}\`); process.exit(0);\""
+    "create:branch": "node scripts/create-branch.js"
   }
 }

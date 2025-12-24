@@ -6,8 +6,10 @@
     "server"
   ],
   "scripts": {
+    "build:staging": "npm run build:staging -w web",
     "web:dev": "npm run dev -w web",
     "web:build": "npm run build -w web",
+    "web:build:staging": "npm run build:staging -w web",
     "native:start": "cd native && npm run start",
     "native:ios": "cd native && npm run ios",
     "native:android": "cd native && npm run android",

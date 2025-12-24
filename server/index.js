@@ -355,6 +355,22 @@ io.on('connection', (socket) => {
         });
     });
 
+    // Handle user leaving event (marking as absent)
+    socket.on('user_left_event', async (eventId) => {
+        if (!socket.userId) {
+            socket.emit('error', 'Authentication required');
+            return;
+        }
+
+        // Notify all users in the event session that this user is now absent
+        io.to(`event_session_${eventId}`).emit('user_absent', {
+            userId: socket.userId,
+            eventId: eventId
+        });
+
+        console.log(`User ${socket.userId} marked as absent for event ${eventId}`);
+    });
+
     // Handle disconnect
     socket.on('disconnect', async () => {
         if (socket.userId) {

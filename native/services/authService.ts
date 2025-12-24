@@ -400,13 +400,19 @@ export const completeOnboarding = async (onboardingData: Partial<User>): Promise
         throw new Error('Not authenticated');
     }
 
-    const response = await fetch(`${API_BASE_URL}/auth/complete-onboarding`, {
-        method: 'POST',
+    // Prepare data for the PUT /onboarding endpoint
+    const onboardingPayload = {
+        ...onboardingData,
+        finalStep: true, // Mark as final step to complete onboarding
+    };
+
+    const response = await fetch(`${API_BASE_URL}/auth/onboarding`, {
+        method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify(onboardingData),
+        body: JSON.stringify(onboardingPayload),
     });
 
     if (!response.ok) {

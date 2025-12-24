@@ -82,7 +82,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit (server handles compression)
+    limits: { fileSize: 2 * 1024 * 1024 * 1024 }, // 2GB limit (server handles auto-cropping to 30s)
     fileFilter: (req, file, cb) => {
         const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
         const validVideoTypes = ['video/mp4', 'video/quicktime', 'video/mov'];
@@ -534,7 +534,7 @@ router.get('/profile/:userId', async (req, res) => {
  *               file:
  *                 type: string
  *                 format: binary
- *                 description: Image (JPEG, PNG, WebP) or Video (MP4, MOV). Max 100MB.
+ *                 description: Image (JPEG, PNG, WebP) or Video (MP4, MOV). Max 2GB (videos auto-cropped to 30s).
  *     responses:
  *       200:
  *         description: File uploaded and processed successfully
@@ -592,7 +592,7 @@ router.post('/upload', (req, res) => {
             // Handle multer errors
             if (err instanceof multer.MulterError) {
                 if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({ message: 'File size exceeds 100MB limit. Please choose a smaller file or trim your video to under 30 seconds.' });
+                    return res.status(400).json({ message: 'File size exceeds 2GB limit. Please choose a smaller file.' });
                 }
                 return res.status(400).json({ message: err.message });
             }
@@ -625,7 +625,8 @@ router.post('/upload', (req, res) => {
                         // Process video: compress, generate thumbnail, extract metadata
                         console.log(`[Upload] Processing video: ${req.file.filename}`);
                         processed = await videoProcessor.processVideo(filePath, {
-                            generateQualities: false // Skip quality variants for faster upload
+                            generateQualities: false, // Skip quality variants for faster upload
+                            maxDuration: 30 // Crop videos to 30 seconds maximum
                         });
 
                         result = {

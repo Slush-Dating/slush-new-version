@@ -393,9 +393,10 @@ export default function EventsScreen() {
     // Refresh when screen comes into focus (e.g., after booking an event)
     useFocusEffect(
         React.useCallback(() => {
-            // Refresh bookings when screen comes into focus
-            fetchBookings();
-        }, [fetchBookings])
+            // Refresh both events and bookings when screen comes into focus
+            // This ensures bookedEvent and countdown are properly restored
+            fetchEventsAndBookings();
+        }, [fetchEventsAndBookings])
     );
 
     // Countdown timer for booked events
@@ -586,6 +587,15 @@ export default function EventsScreen() {
                             onPress={() => router.push('/(main)/notifications')}
                         >
                             <Bell size={20} color="#1A202C" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.actionButton, styles.testButton]}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/(main)/events/test');
+                            }}
+                        >
+                            <Text style={styles.testButtonText}>🧪</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -838,6 +848,12 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.05,
         shadowRadius: 2,
         elevation: 1,
+    },
+    testButton: {
+        backgroundColor: '#3B82F6',
+    },
+    testButtonText: {
+        fontSize: 18,
     },
     // Search Bar
     searchContainer: {

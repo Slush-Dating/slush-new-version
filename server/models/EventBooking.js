@@ -22,7 +22,7 @@ const eventBookingSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['booked', 'attended', 'cancelled'],
+        enum: ['booked', 'attended', 'cancelled', 'absent'],
         default: 'booked'
     }
 });

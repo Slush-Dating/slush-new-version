@@ -42,6 +42,7 @@ import * as Haptics from 'expo-haptics';
 import { matchService, type Match } from '../../../services/api';
 import { getAbsoluteMediaUrl, getApiBaseUrl } from '../../../services/apiConfig';
 import * as authService from '../../../services/authService';
+import { useBackNavigation } from '../../../hooks/useBackNavigation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HEADER_HEIGHT = SCREEN_HEIGHT * 0.5;
@@ -67,6 +68,7 @@ interface UserProfile {
 export default function UserProfileScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
+    const handleBack = useBackNavigation('/(main)/feed');
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -132,9 +134,9 @@ export default function UserProfileScreen() {
         }
     };
 
-    const handleBack = () => {
+    const onBackPress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.back();
+        handleBack();
     };
 
     const handleChat = () => {
@@ -160,7 +162,7 @@ export default function UserProfileScreen() {
                             if (matchId) {
                                 await matchService.unmatch(matchId);
                                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                                router.back();
+                                handleBack();
                             }
                         } catch (error) {
                             Alert.alert('Error', 'Failed to unmatch');
@@ -285,7 +287,7 @@ export default function UserProfileScreen() {
             }
 
             if (action === 'pass') {
-                router.back();
+                handleBack();
             }
         } catch (error) {
             console.error('Action failed:', error);
@@ -339,7 +341,7 @@ export default function UserProfileScreen() {
         return (
             <View style={styles.errorContainer}>
                 <Text style={styles.errorText}>Profile not found</Text>
-                <TouchableOpacity onPress={handleBack}>
+                <TouchableOpacity onPress={onBackPress}>
                     <Text style={styles.backLink}>Go Back</Text>
                 </TouchableOpacity>
             </View>
@@ -398,7 +400,7 @@ export default function UserProfileScreen() {
 
                     {/* Top Header */}
                     <SafeAreaView style={styles.headerOverlay} edges={['top']}>
-                        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                        <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
                             <ArrowLeft size={24} color="#ffffff" />
                         </TouchableOpacity>
                         {isMatched && (

@@ -491,6 +491,22 @@ export const matchService = {
 
         return response.json();
     },
+
+    async leaveEvent(id: string): Promise<{ message: string; booking: any; event: any }> {
+        const API_BASE_URL = getApiBaseUrl();
+        const headers = await getAuthHeaders();
+
+        const response = await fetch(`${API_BASE_URL}/events/${id}/leave`, {
+            method: 'POST',
+            headers,
+        });
+
+        if (!response.ok) {
+            return handleApiError(response);
+        }
+
+        return response.json();
+    },
 };
 
 // =============================================================================
@@ -737,7 +753,10 @@ export const agoraService = {
         const API_BASE_URL = getApiBaseUrl();
         const headers = await getAuthHeaders();
 
-        const response = await fetch(`${API_BASE_URL}/agora/next-partner?eventId=${eventId}`, { headers });
+        const response = await fetch(`${API_BASE_URL}/agora/event/${eventId}/next-partner`, {
+            method: 'POST',
+            headers,
+        });
 
         if (!response.ok) {
             return handleApiError(response);

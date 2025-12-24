@@ -32,10 +32,12 @@ import * as Haptics from 'expo-haptics';
 
 import { eventService, type EventData } from '../../../services/api';
 import { getAbsoluteMediaUrl } from '../../../services/apiConfig';
+import { useBackNavigation } from '../../../hooks/useBackNavigation';
 
 export default function EventDetailScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
+    const handleBack = useBackNavigation('/(main)/events');
 
     const [event, setEvent] = useState<EventData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -140,9 +142,9 @@ export default function EventDetailScreen() {
         );
     };
 
-    const handleBack = () => {
+    const onBackPress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.back();
+        handleBack();
     };
 
     const formatDate = (dateString: string) => {
@@ -217,7 +219,7 @@ export default function EventDetailScreen() {
             {/* Navigation Buttons */}
             <SafeAreaView style={styles.backButtonContainer} edges={['top']}>
                 <View style={styles.headerButtons}>
-                    <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                    <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
                         <ArrowLeft size={24} color="#ffffff" />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={handleBookmark} style={styles.bookmarkButton}>

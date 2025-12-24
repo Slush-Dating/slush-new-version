@@ -17,6 +17,8 @@ class SocketService {
     private connectionHandlers: Set<(status: 'connected' | 'disconnected') => void> = new Set();
     private typingStartHandlers: Set<(userId: string) => void> = new Set();
     private typingStopHandlers: Set<(userId: string) => void> = new Set();
+    private userStatusHandlers: Set<(data: { userId: string; isOnline: boolean }) => void> = new Set();
+    private userAbsentHandlers: Set<(data: { userId: string; eventId: string }) => void> = new Set();
 
     /**
      * Connect to the socket server
@@ -62,14 +64,28 @@ class SocketService {
             console.log('✅ Socket connected');
             this.reconnectAttempts = 0;
 
-            // Join user's room for personal notifications
+            // Authenticate with the server (required for send_message to work)
             if (this.userId) {
-                this.socket?.emit('join_user_room', this.userId);
-                console.log('📍 Joined user room:', this.userId);
+                this.socket?.emit('authenticate', this.userId);
+                console.log('🔐 Authenticating socket with userId:', this.userId);
             }
 
             // Notify handlers
             this.connectionHandlers.forEach(handler => handler('connected'));
+        });
+
+        // Listen for authentication confirmation
+        this.socket.on('authenticated', (data: { userId: string }) => {
+            console.log('✅ Socket authenticated:', data.userId);
+        });
+
+        // Listen for authentication errors
+        this.socket.on('error', (error: string) => {
+            console.error('❌ Socket error:', error);
+            if (error.includes('Authentication')) {
+                console.error('🔐 Authentication failed, attempting to reconnect...');
+                // The socket will automatically reconnect, and we'll try to authenticate again
+            }
         });
 
         this.socket.on('disconnect', (reason) => {
@@ -103,6 +119,24 @@ class SocketService {
         this.socket.on('typing_stop', (userId: string) => {
             console.log('✍️ User stopped typing:', userId);
             this.typingStopHandlers.forEach(handler => handler(userId));
+        });
+
+        // Listen for user status changes (online/offline)
+        this.socket.on('user_status_change', (data: { userId: string; isOnline: boolean }) => {
+            console.log('👤 User status changed:', data.userId, data.isOnline ? 'online' : 'offline');
+            this.userStatusHandlers.forEach(handler => handler(data));
+        });
+
+        // Listen for user status responses
+        this.socket.on('user_status', (data: { userId: string; isOnline: boolean }) => {
+            console.log('👤 User status response:', data.userId, data.isOnline ? 'online' : 'offline');
+            this.userStatusHandlers.forEach(handler => handler(data));
+        });
+
+        // Listen for user absent events (when someone leaves an event)
+        this.socket.on('user_absent', (data: { userId: string; eventId: string }) => {
+            console.log('👤 User marked as absent:', data.userId, 'for event:', data.eventId);
+            this.userAbsentHandlers.forEach(handler => handler(data));
         });
     }
 
@@ -266,6 +300,29 @@ class SocketService {
     }
 
     /**
+     * Register a handler for user status changes (online/offline)
+     */
+    onUserStatusChange(handler: (data: { userId: string; isOnline: boolean }) => void): void {
+        this.userStatusHandlers.add(handler);
+    }
+
+    /**
+     * Register a handler for user absent events
+     */
+    onUserAbsent(handler: (data: { userId: string; eventId: string }) => void): void {
+        this.userAbsentHandlers.add(handler);
+    }
+
+    /**
+     * Request the online status of a specific user
+     */
+    getUserStatus(userId: string): void {
+        if (this.socket?.connected) {
+            this.socket.emit('get_user_status', userId);
+        }
+    }
+
+    /**
      * Remove a specific event handler
      */
     off(event: string, handler: (data: any) => void): void {
@@ -277,6 +334,10 @@ class SocketService {
             this.typingStartHandlers.delete(handler);
         } else if (event === 'typing_stop') {
             this.typingStopHandlers.delete(handler);
+        } else if (event === 'user_status_change' || event === 'user_status') {
+            this.userStatusHandlers.delete(handler);
+        } else if (event === 'user_absent') {
+            this.userAbsentHandlers.delete(handler);
         } else if (this.socket) {
             this.socket.off(event, handler);
         }

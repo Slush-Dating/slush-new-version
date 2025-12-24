@@ -29,6 +29,7 @@ import * as Haptics from 'expo-haptics';
 import { notificationService, type NotificationData } from '../../services/api';
 import { getAbsoluteMediaUrl } from '../../services/apiConfig';
 import { useAuth } from '../../hooks/useAuth';
+import { useBackNavigation } from '../../hooks/useBackNavigation';
 
 type FilterType = 'all' | 'general' | 'match' | 'like';
 
@@ -42,6 +43,7 @@ const FILTERS: { id: FilterType; label: string }[] = [
 export default function NotificationsScreen() {
     const router = useRouter();
     const { user } = useAuth();
+    const handleBack = useBackNavigation('/(main)/feed');
     const [notifications, setNotifications] = useState<NotificationData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -72,9 +74,9 @@ export default function NotificationsScreen() {
         fetchNotifications();
     };
 
-    const handleBack = () => {
+    const onBackPress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.back();
+        handleBack();
     };
 
     const handleFilterChange = (filter: FilterType) => {
@@ -211,7 +213,7 @@ export default function NotificationsScreen() {
         return (
             <SafeAreaView style={styles.container} edges={['top']}>
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                    <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
                         <ArrowLeft size={24} color="#ffffff" />
                     </TouchableOpacity>
                     <Text style={styles.title}>Notifications</Text>

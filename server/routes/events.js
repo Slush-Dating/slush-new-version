@@ -538,6 +538,119 @@ router.delete('/:id/book', authMiddleware, async (req, res) => {
 
 /**
  * @swagger
+ * /api/events/{id}/leave:
+ *   post:
+ *     summary: Leave event (mark as absent)
+ *     tags: [Events]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Event ID
+ *     responses:
+ *       200:
+ *         description: Successfully left event (marked as absent)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 booking:
+ *                   type: object
+ *                 event:
+ *                   type: object
+ *       400:
+ *         description: Cannot leave event after matches have been made
+ *       404:
+ *         description: Booking not found
+ */
+router.post('/:id/leave', authMiddleware, async (req, res) => {
+    try {
+        const event = await Event.findById(req.params.id);
+        if (!event) {
+            return res.status(404).json({ message: 'Event not found' });
+        }
+
+        // Find and update booking to absent status
+        const booking = await EventBooking.findOneAndUpdate(
+            { eventId: event._id, userId: req.userId, status: 'booked' },
+            { status: 'absent' },
+            { new: true }
+        );
+
+        if (!booking) {
+            return res.status(404).json({ message: 'Active booking not found' });
+        }
+
+        // Check if user has matches from this event - if so, don't allow leaving
+        const Match = (await import('../models/Match.js')).default;
+        const userMatches = await Match.find({
+            $or: [
+                { user1: req.userId },
+                { user2: req.userId }
+            ],
+            eventId: event._id,
+            status: { $in: ['active', 'mutual'] }
+        });
+
+        if (userMatches.length > 0) {
+            // Revert the status change
+            await EventBooking.findByIdAndUpdate(booking._id, { status: 'booked' });
+            return res.status(400).json({
+                message: 'You cannot leave this event as you have active matches. Complete the event or wait for it to end.',
+                hasMatches: true
+            });
+        }
+
+        // Remove from participant arrays (they can still see the event but won't be matched)
+        event.maleParticipants = event.maleParticipants.filter(
+            id => id.toString() !== req.userId.toString()
+        );
+        event.femaleParticipants = event.femaleParticipants.filter(
+            id => id.toString() !== req.userId.toString()
+        );
+        event.otherParticipants = event.otherParticipants.filter(
+            id => id.toString() !== req.userId.toString()
+        );
+
+        await event.save();
+
+        // Emit socket event to notify other participants
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`event_${event._id}`).emit('user_absent', {
+                userId: req.userId,
+                eventId: event._id
+            });
+        }
+
+        res.json({
+            message: 'Successfully left event. You will remain in the lobby until your next round.',
+            booking: {
+                eventId: event._id,
+                status: booking.status,
+                leftAt: new Date()
+            },
+            event: {
+                maleCount: event.maleParticipants.length,
+                femaleCount: event.femaleParticipants.length,
+                otherCount: event.otherParticipants.length
+            }
+        });
+    } catch (err) {
+        console.error('Leave event error:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+/**
+ * @swagger
  * /api/events/{id}/booking-status:
  *   get:
  *     summary: Check if user has booked event

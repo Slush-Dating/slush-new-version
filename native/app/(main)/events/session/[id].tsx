@@ -2,11 +2,7 @@
  * Event Session Screen
  * Live speed dating session with video calls
  * 
- * NOTE: This is a placeholder implementation.
- * Full Agora video chat integration would require:
- * - npm install react-native-agora
- * - iOS/Android native module setup
- * - Agora app credentials
+ * Full Agora video chat integration with react-native-agora
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -22,8 +18,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Camera, CameraView } from 'expo-camera';
+import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    withTiming,
+    withSequence,
+    withDelay,
+    interpolate,
+} from 'react-native-reanimated';
 import {
     Heart,
     X,
@@ -34,24 +39,52 @@ import {
     Clock,
     MessageCircle,
     SkipForward,
+    Zap,
+    ThumbsDown,
+    ArrowLeft,
+    RotateCw,
+    Phone,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+// Conditional import for Agora - requires native modules (development build)
+let createAgoraRtcEngine: any;
+let IRtcEngine: any;
+let ChannelProfileType: any;
+let ClientRoleType: any;
+let RtcSurfaceView: any;
+let VideoCanvas: any;
+let VideoSourceType: any;
 
-import { eventService, matchService } from '../../../../services/api';
+try {
+    const agoraModule = require('react-native-agora');
+    createAgoraRtcEngine = agoraModule.createAgoraRtcEngine;
+    IRtcEngine = agoraModule.IRtcEngine;
+    ChannelProfileType = agoraModule.ChannelProfileType;
+    ClientRoleType = agoraModule.ClientRoleType;
+    RtcSurfaceView = agoraModule.RtcSurfaceView;
+    VideoCanvas = agoraModule.VideoCanvas;
+    VideoSourceType = agoraModule.VideoSourceType;
+} catch (error) {
+    console.warn('react-native-agora not available - requires development build:', error);
+    // Module will be undefined, we'll handle this in the component
+}
+
+import { eventService, matchService, agoraService } from '../../../../services/api';
 import { getAbsoluteMediaUrl } from '../../../../services/apiConfig';
 import socketService from '../../../../services/socketService';
 import { getCurrentUserId } from '../../../../services/authService';
+import { useAuth } from '../../../../hooks/useAuth';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Session timing (in seconds)
 const TIMING = {
-    PREP: 15,      // 15 seconds prep
+    LOBBY: 60,     // 60 seconds lobby before each date
     DATE: 180,     // 3 minutes date
-    FEEDBACK: 30,  // 30 seconds feedback
+    FEEDBACK: 60,  // 60 seconds feedback
 };
 
-type SessionPhase = 'loading' | 'prep' | 'date' | 'feedback' | 'waiting' | 'summary' | 'complete';
+type SessionPhase = 'loading' | 'lobby' | 'date' | 'feedback' | 'waiting' | 'summary' | 'complete';
 
 interface Partner {
     id: string;
@@ -64,43 +97,291 @@ interface Partner {
 
 export default function EventSessionScreen() {
     const router = useRouter();
-    const { id } = useLocalSearchParams<{ id: string }>();
+    const { id, testPhase } = useLocalSearchParams<{ id: string; testPhase?: string }>();
+    const { user } = useAuth();
 
-    const [phase, setPhase] = useState<SessionPhase>('loading');
+    const [phase, setPhase] = useState<SessionPhase>(
+        (testPhase as SessionPhase) || 'loading'
+    );
     const [partner, setPartner] = useState<Partner | null>(null);
     const [timeLeft, setTimeLeft] = useState(0);
     const [roundNumber, setRoundNumber] = useState(1);
-    const [totalRounds] = useState(5); // Could be dynamic
+    const [totalRounds] = useState(10); // Default to 10 rounds
     const [isCameraOn, setIsCameraOn] = useState(true);
     const [isMicOn, setIsMicOn] = useState(true);
     const [hasPermission, setHasPermission] = useState<boolean | null>(null);
     const [likedPartners, setLikedPartners] = useState<string[]>([]);
     const [matches, setMatches] = useState<Partner[]>([]);
+    const [hasMatches, setHasMatches] = useState(false);
+    const [agoraError, setAgoraError] = useState<string | null>(null);
+    const [remoteUid, setRemoteUid] = useState<number | null>(null);
+    const [isAgoraInitialized, setIsAgoraInitialized] = useState(false);
+    const [timeNotifications, setTimeNotifications] = useState<{ [key: string]: boolean }>({
+        '1min': false,
+        '30sec': false,
+    });
+    const [showTimeNotification, setShowTimeNotification] = useState<string | null>(null);
+    const [absentUsers, setAbsentUsers] = useState<Set<string>>(new Set());
 
     const timerRef = useRef<NodeJS.Timeout | null>(null);
-    const cameraRef = useRef<CameraView>(null);
+    const agoraEngineRef = useRef<IRtcEngine | null>(null);
+    const currentChannelRef = useRef<string | null>(null);
+    const currentUidRef = useRef<number | null>(null);
+    const appIdRef = useRef<string | null>(null);
+    const localCanvasRef = useRef<VideoCanvas | null>(null);
+    const remoteCanvasRef = useRef<VideoCanvas | null>(null);
+
+    // Animation values for feedback screen
+    const profileScale = useSharedValue(0);
+    const profileOpacity = useSharedValue(0);
+    const buttonsOpacity = useSharedValue(0);
+    const buttonsTranslateY = useSharedValue(30);
+    const timerPulse = useSharedValue(1);
+
+    // Initialize Agora engine
+    useEffect(() => {
+        const initAgora = async () => {
+            // Check if Agora module is available
+            if (!createAgoraRtcEngine || !ChannelProfileType || !VideoSourceType) {
+                setAgoraError('Agora SDK not available - requires Expo development build. See README.md for setup instructions.');
+                console.warn('Agora SDK not available - native modules require development build');
+                return;
+            }
+
+            try {
+                // Get appId from backend first (we'll use a dummy channel name to get the appId)
+                // In production, you might want to store appId in config or get it separately
+                let appId = appIdRef.current;
+                
+                if (!appId) {
+                    try {
+                        // Get token to retrieve appId (using a temporary channel name)
+                        const tempTokenData = await agoraService.getToken('temp_init');
+                        appId = tempTokenData.appId;
+                        appIdRef.current = appId;
+                    } catch (error) {
+                        console.warn('Could not get appId from token, will try during join:', error);
+                        // Continue without appId - will handle during join
+                    }
+                }
+                
+                // Create Agora engine instance using v4.x API
+                const engine = createAgoraRtcEngine();
+                await engine.initialize({
+                    appId: appId || '',
+                });
+                
+                // Enable video and audio
+                await engine.enableVideo();
+                await engine.enableAudio();
+                
+                // Set channel profile to communication
+                await engine.setChannelProfile(ChannelProfileType.ChannelProfileCommunication);
+                
+                // Register event handlers
+                engine.registerEventHandler({
+                    onJoinChannelSuccess: (channel: string, uid: number, elapsed: number) => {
+                        console.log('Joined channel successfully:', channel, uid);
+                        currentUidRef.current = uid;
+                    },
+                    onUserJoined: (uid: number, elapsed: number) => {
+                        console.log('Remote user joined:', uid);
+                        setRemoteUid(uid);
+                        // Setup remote canvas
+                        remoteCanvasRef.current = {
+                            uid: uid,
+                            sourceType: VideoSourceType.VideoSourceRemote,
+                        };
+                    },
+                    onUserOffline: (uid: number, reason: number) => {
+                        console.log('Remote user left:', uid);
+                        setRemoteUid(null);
+                        remoteCanvasRef.current = null;
+                    },
+                    onRemoteVideoStateChanged: (uid: number, state: number, reason: number, elapsed: number) => {
+                        console.log('Remote video state changed:', uid, state);
+                    },
+                    onRemoteAudioStateChanged: (uid: number, state: number, reason: number, elapsed: number) => {
+                        console.log('Remote audio state changed:', uid, state);
+                    },
+                    onError: (err: number, msg: string) => {
+                        console.error('Agora error:', err, msg);
+                        setAgoraError(`Agora error: ${msg}`);
+                    },
+                });
+                
+                // Setup local canvas
+                localCanvasRef.current = {
+                    uid: 0,
+                    sourceType: VideoSourceType.VideoSourceCamera,
+                };
+                
+                agoraEngineRef.current = engine;
+                setIsAgoraInitialized(true);
+            } catch (error) {
+                console.error('Failed to initialize Agora:', error);
+                setAgoraError(`Failed to initialize Agora: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+        };
+        
+        initAgora();
+        
+        return () => {
+            cleanupAgora();
+        };
+    }, []);
+
+    // Socket event handling for absent users
+    useEffect(() => {
+        if (!id || !user?.id) return;
+
+        const handleUserAbsent = (data: { userId: string; eventId: string }) => {
+            if (data.eventId === id) {
+                setAbsentUsers(prev => new Set([...prev, data.userId]));
+                console.log('User marked as absent:', data.userId);
+            }
+        };
+
+        socketService.onUserAbsent(handleUserAbsent);
+
+        return () => {
+            socketService.off('user_absent', handleUserAbsent);
+        };
+    }, [id, user?.id]);
+
+    // Cleanup Agora on unmount
+    const cleanupAgora = async () => {
+        try {
+            if (agoraEngineRef.current) {
+                await leaveAgoraChannel();
+                agoraEngineRef.current.release();
+                agoraEngineRef.current = null;
+                setIsAgoraInitialized(false);
+                localCanvasRef.current = null;
+                remoteCanvasRef.current = null;
+            }
+        } catch (error) {
+            console.error('Error cleaning up Agora:', error);
+        }
+    };
 
     useEffect(() => {
-        requestPermissions();
-        startSession();
+        // If test phase is provided, set it up directly
+        if (testPhase) {
+            const testPhaseTyped = testPhase as SessionPhase;
+            
+            // Set appropriate time and state for test phase
+            switch (testPhaseTyped) {
+                case 'lobby':
+                    setPhase('lobby');
+                    setTimeLeft(TIMING.LOBBY);
+                    setPartner({
+                        id: 'test_partner',
+                        userId: 'test_user',
+                        name: 'Test Partner',
+                        age: 25,
+                        imageUrl: null,
+                        bio: 'This is a test partner for stage testing',
+                    });
+                    break;
+                case 'date':
+                    setPhase('date');
+                    setTimeLeft(TIMING.DATE);
+                    // Set mock partner for testing
+                    setPartner({
+                        id: 'test_partner',
+                        userId: 'test_user',
+                        name: 'Test Partner',
+                        age: 25,
+                        imageUrl: null,
+                        bio: 'This is a test partner for stage testing',
+                    });
+                    break;
+                case 'feedback':
+                    setPhase('feedback');
+                    setTimeLeft(TIMING.FEEDBACK);
+                    setPartner({
+                        id: 'test_partner',
+                        userId: 'test_user',
+                        name: 'Test Partner',
+                        age: 25,
+                        imageUrl: null,
+                        bio: 'This is a test partner for stage testing',
+                    });
+                    break;
+                case 'waiting':
+                    setPhase('waiting');
+                    setTimeLeft(0);
+                    setRoundNumber(3); // Set a test round number
+                    break;
+                case 'summary':
+                    setPhase('summary');
+                    setTimeLeft(0);
+                    break;
+                case 'loading':
+                    setPhase('loading');
+                    setTimeLeft(0);
+                    break;
+                default:
+                    startSession();
+            }
+        } else {
+            startSession();
+        }
 
         return () => {
             if (timerRef.current) {
                 clearInterval(timerRef.current);
             }
         };
-    }, []);
+    }, [testPhase]);
 
-    // Timer effect
+    // Check for matches to prevent leaving
     useEffect(() => {
-        if (phase === 'prep' || phase === 'date' || phase === 'feedback') {
+        const checkMatches = async () => {
+            try {
+                const userMatches = await matchService.getMatches();
+                setHasMatches(userMatches.length > 0);
+            } catch (error) {
+                console.error('Failed to check matches:', error);
+            }
+        };
+        // Check matches periodically and when matches state changes
+        checkMatches();
+        const interval = setInterval(checkMatches, 5000); // Check every 5 seconds
+        return () => clearInterval(interval);
+    }, [matches]);
+
+    // Timer effect with notifications
+    useEffect(() => {
+        if (phase === 'lobby' || phase === 'date' || phase === 'feedback') {
             timerRef.current = setInterval(() => {
                 setTimeLeft((prev) => {
                     if (prev <= 1) {
                         handlePhaseEnd();
                         return 0;
                     }
-                    return prev - 1;
+
+                    const newTime = prev - 1;
+
+                    // Trigger notifications for date phase
+                    if (phase === 'date') {
+                        if (newTime === 60 && !timeNotifications['1min']) {
+                            // 1 minute left notification
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setTimeNotifications(prev => ({ ...prev, '1min': true }));
+                            setShowTimeNotification('1 minute remaining');
+                            setTimeout(() => setShowTimeNotification(null), 2500);
+                        } else if (newTime === 30 && !timeNotifications['30sec']) {
+                            // 30 seconds left notification
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            setTimeNotifications(prev => ({ ...prev, '30sec': true }));
+                            setShowTimeNotification('30 seconds remaining');
+                            setTimeout(() => setShowTimeNotification(null), 2500);
+                        }
+                    }
+
+                    return newTime;
                 });
             }, 1000);
         }
@@ -110,48 +391,129 @@ export default function EventSessionScreen() {
                 clearInterval(timerRef.current);
             }
         };
-    }, [phase, partner]);
-
-    const requestPermissions = async () => {
-        const { status } = await Camera.requestCameraPermissionsAsync();
-        setHasPermission(status === 'granted');
-    };
+    }, [phase, partner, timeNotifications]);
 
     const startSession = async () => {
-        // Simulate fetching first partner
+        // Fetch first partner
         await fetchNextPartner();
     };
 
     const fetchNextPartner = async () => {
         setPhase('loading');
+        setAgoraError(null);
 
-        // Simulate API call to get next partner
-        // In real implementation, this would come from your backend
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        try {
+            if (!id) {
+                throw new Error('Event ID is required');
+            }
 
-        // Mock partner data
-        const mockPartner: Partner = {
-            id: `partner_${roundNumber}`,
-            userId: `user_${roundNumber}`,
-            name: ['Sarah', 'Emma', 'Olivia', 'Ava', 'Isabella'][roundNumber - 1] || 'Partner',
-            age: 24 + roundNumber,
-            imageUrl: null, // Would be real URL in production
-            bio: 'Looking forward to connecting!',
-        };
-
-        setPartner(mockPartner);
-        setPhase('prep');
-        setTimeLeft(TIMING.PREP);
+            // Fetch next partner from API
+            const result = await agoraService.getNextPartner(id);
+            setPartner(result.partner);
+            setPhase('lobby');
+            setTimeLeft(TIMING.LOBBY);
+        } catch (error) {
+            console.error('Failed to fetch next partner:', error);
+            setAgoraError(`Failed to fetch partner: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            
+            // Fallback to mock partner for testing
+            const mockPartner: Partner = {
+                id: `partner_${roundNumber}`,
+                userId: `user_${roundNumber}`,
+                name: ['Sarah', 'Emma', 'Olivia', 'Ava', 'Isabella', 'Sophia', 'Charlotte', 'Amelia', 'Harper', 'Evelyn'][roundNumber - 1] || 'Partner',
+                age: 24 + roundNumber,
+                imageUrl: null,
+                bio: 'Looking forward to connecting!',
+            };
+            setPartner(mockPartner);
+            setPhase('lobby');
+            setTimeLeft(TIMING.LOBBY);
+        }
     };
 
-    const handlePhaseEnd = () => {
+    // Join Agora channel
+    const joinAgoraChannel = async (channelName: string) => {
+        if (!agoraEngineRef.current || !isAgoraInitialized) {
+            console.error('Agora engine not initialized');
+            return;
+        }
+
+        try {
+            setAgoraError(null);
+
+            // Get token from backend
+            const tokenData = await agoraService.getToken(channelName);
+            currentUidRef.current = tokenData.uid;
+
+            // Enable local video/audio based on state
+            if (isCameraOn) {
+                await agoraEngineRef.current.enableLocalVideo(true);
+                await agoraEngineRef.current.startPreview();
+            } else {
+                await agoraEngineRef.current.enableLocalVideo(false);
+            }
+
+            if (isMicOn) {
+                await agoraEngineRef.current.enableLocalAudio(true);
+            } else {
+                await agoraEngineRef.current.enableLocalAudio(false);
+            }
+
+            // Join channel using v4.x API
+            await agoraEngineRef.current.joinChannel(
+                tokenData.token,
+                channelName,
+                tokenData.uid,
+                {
+                    clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+                }
+            );
+
+            currentChannelRef.current = channelName;
+        } catch (error) {
+            console.error('Failed to join Agora channel:', error);
+            setAgoraError(`Failed to join channel: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    };
+
+    // Leave Agora channel
+    const leaveAgoraChannel = async () => {
+        if (!agoraEngineRef.current) {
+            return;
+        }
+
+        try {
+            await agoraEngineRef.current.leaveChannel();
+            currentChannelRef.current = null;
+            setRemoteUid(null);
+        } catch (error) {
+            console.error('Failed to leave Agora channel:', error);
+        }
+    };
+
+    const handlePhaseEnd = async () => {
+        // Don't allow phase transitions for absent users
+        if (user?.id && absentUsers.has(user.id)) {
+            console.log('User is absent, staying in current phase');
+            return;
+        }
+
         switch (phase) {
-            case 'prep':
+            case 'lobby':
+                // Join Agora channel when starting the date
+                if (partner && id) {
+                    const channelName = `event_${id}_round_${roundNumber}_${partner.userId}`;
+                    await joinAgoraChannel(channelName);
+                }
                 setPhase('date');
                 setTimeLeft(TIMING.DATE);
+                // Reset time notifications for new date
+                setTimeNotifications({ '1min': false, '30sec': false });
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 break;
             case 'date':
+                // Leave channel when date ends
+                await leaveAgoraChannel();
                 setPhase('feedback');
                 setTimeLeft(TIMING.FEEDBACK);
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -172,7 +534,8 @@ export default function EventSessionScreen() {
             const result = await matchService.performAction(
                 partner.userId,
                 'like',
-                'live_event'
+                'live_event',
+                id
             );
 
             if (result.isMatch) {
@@ -188,29 +551,147 @@ export default function EventSessionScreen() {
         moveToNextRound(true);
     };
 
-    const handlePass = () => {
+    const handlePass = async () => {
+        if (!partner) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+        try {
+            // Call match API with pass action
+            await matchService.performAction(
+                partner.userId,
+                'pass',
+                'live_event',
+                id
+            );
+        } catch (error) {
+            console.error('Pass failed:', error);
+        }
+
         moveToNextRound(false);
     };
 
+    const handleSuperLike = async () => {
+        if (!partner) return;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+        try {
+            // Call match API with super_like action
+            const result = await matchService.performAction(
+                partner.userId,
+                'super_like',
+                'live_event',
+                id
+            );
+
+            if (result.isMatch) {
+                setMatches((prev) => [...prev, partner]);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+
+            setLikedPartners((prev) => [...prev, partner.userId]);
+        } catch (error) {
+            console.error('Super like failed:', error);
+            // Fallback to regular like if super like fails
+            await handleLike();
+            return;
+        }
+
+        moveToNextRound(true);
+    };
+
     const moveToNextRound = async (liked: boolean) => {
+        // Don't allow absent users to move to next rounds
+        if (user?.id && absentUsers.has(user.id)) {
+            console.log('User is absent, staying in waiting phase');
+            setPhase('waiting');
+            return;
+        }
+
         if (timerRef.current) {
             clearInterval(timerRef.current);
         }
+
+        // Leave current channel
+        await leaveAgoraChannel();
 
         if (roundNumber >= totalRounds) {
             setPhase('summary');
         } else {
             setRoundNumber((prev) => prev + 1);
-            setPhase('waiting');
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            // Go to lobby for next round
             await fetchNextPartner();
         }
     };
 
     const handleComplete = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        router.replace('/(main)/matches');
+        if (hasMatches || matches.length > 0) {
+            // If user has matches, prevent leaving to chat
+            Alert.alert(
+                'Event Complete',
+                'You have matches! You\'ll be able to chat after the event ends.',
+                [{ text: 'OK', onPress: () => router.replace('/(main)/events') }]
+            );
+        } else {
+            router.replace('/(main)/matches');
+        }
+    };
+
+    const handleLeaveEvent = async () => {
+        if (hasMatches || matches.length > 0) {
+            Alert.alert(
+                'Cannot Leave',
+                'You have matches from this event. You cannot leave until the event is complete.',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+
+        Alert.alert(
+            'Leave Event',
+            'Are you sure you want to leave? You will be marked as absent and remain in the lobby until your next round.',
+            [
+                { text: 'Stay', style: 'cancel' },
+                {
+                    text: 'Leave',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            // Call the leave event API
+                            await eventService.leaveEvent(id);
+
+                            // Leave Agora channel
+                            await leaveAgoraChannel();
+
+                            // Emit socket event to notify others
+                            socketService.emit('user_left_event', id);
+
+                            // Mark user as absent locally
+                            if (user?.id) {
+                                setAbsentUsers(prev => new Set([...prev, user.id]));
+                            }
+
+                            Alert.alert(
+                                'Left Event',
+                                'You have left the event and are now marked as absent. You will remain in the lobby until your next round.',
+                                [
+                                    {
+                                        text: 'OK',
+                                        onPress: () => {
+                                            // Stay in the session but in waiting/absent state
+                                            setPhase('waiting');
+                                        }
+                                    }
+                                ]
+                            );
+                        } catch (error) {
+                            console.error('Failed to leave event:', error);
+                            Alert.alert('Error', 'Failed to leave event. Please try again.');
+                        }
+                    },
+                },
+            ]
+        );
     };
 
     const handleSkip = () => {
@@ -224,12 +705,63 @@ export default function EventSessionScreen() {
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
+    // Animation effect for feedback screen
+    useEffect(() => {
+        if (phase === 'feedback') {
+            // Animate profile card entrance
+            profileScale.value = withSpring(1, { damping: 12, stiffness: 100 });
+            profileOpacity.value = withTiming(1, { duration: 400 });
+            
+            // Animate buttons entrance
+            buttonsOpacity.value = withDelay(200, withTiming(1, { duration: 400 }));
+            buttonsTranslateY.value = withDelay(200, withSpring(0, { damping: 12 }));
+            
+            // Pulse timer when time is running low
+            if (timeLeft <= 10) {
+                timerPulse.value = withSequence(
+                    withTiming(1.1, { duration: 500 }),
+                    withTiming(1, { duration: 500 })
+                );
+            } else {
+                timerPulse.value = 1;
+            }
+        } else {
+            // Reset animations
+            profileScale.value = 0;
+            profileOpacity.value = 0;
+            buttonsOpacity.value = 0;
+            buttonsTranslateY.value = 30;
+            timerPulse.value = 1;
+        }
+    }, [phase, timeLeft]);
+
+    // Animated styles for feedback screen
+    const profileAnimatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: profileScale.value }],
+        opacity: profileOpacity.value,
+    }));
+
+    const buttonsAnimatedStyle = useAnimatedStyle(() => ({
+        opacity: buttonsOpacity.value,
+        transform: [{ translateY: buttonsTranslateY.value }],
+    }));
+
+    const timerAnimatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: timerPulse.value }],
+    }));
+
     // Loading state
     if (phase === 'loading') {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#3B82F6" />
                 <Text style={styles.loadingText}>Finding your next match...</Text>
+                {agoraError && (
+                    <Text style={styles.errorText}>{agoraError}</Text>
+                )}
+                {!isAgoraInitialized && (
+                    <Text style={styles.loadingSubtext}>Initialising video...</Text>
+                )}
             </View>
         );
     }
@@ -288,41 +820,363 @@ export default function EventSessionScreen() {
         );
     }
 
+    // Lobby phase - shows before each date
+    if (phase === 'lobby') {
+        const currentUserPhoto = user?.photos?.[0] ? getAbsoluteMediaUrl(user.photos[0]) : null;
+        const partnerPhoto = partner?.imageUrl ? getAbsoluteMediaUrl(partner.imageUrl) : null;
+        const currentUserName = user?.name || 'You';
+        const currentUserAge = user?.dob ? (() => {
+            const today = new Date();
+            const birthDate = new Date(user.dob);
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            return age;
+        })() : null;
+
+        return (
+            <SafeAreaView style={styles.lobbyContainer} edges={['top', 'bottom']}>
+                <View style={styles.lobbyContent}>
+                    {/* Title */}
+                    <Text style={styles.lobbyTitle}>Speed Dating Event</Text>
+                    <Text style={styles.lobbySubtitle}>Get ready to date and find your match.</Text>
+
+                    {/* Timer */}
+                    <View style={styles.lobbyTimerContainer}>
+                        <View style={styles.lobbyTimerBadge}>
+                            <Clock size={16} color="#3B82F6" />
+                            <Text style={styles.lobbyTimerText}>
+                                Starts in {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')} min
+                            </Text>
+                        </View>
+                    </View>
+
+                    {/* Participants */}
+                    <View style={styles.participantsContainer}>
+                        {/* Current User */}
+                        <View style={styles.participantCard}>
+                            {currentUserPhoto ? (
+                                <Image
+                                    source={{ uri: currentUserPhoto }}
+                                    style={styles.participantImage}
+                                    resizeMode="cover"
+                                />
+                            ) : (
+                                <View style={[styles.participantImage, styles.participantPlaceholder]}>
+                                    <Text style={styles.participantEmoji}>👤</Text>
+                                </View>
+                            )}
+                            <Text style={styles.participantName}>
+                                {currentUserName}
+                                {currentUserAge && `, ${currentUserAge}`}
+                            </Text>
+                        </View>
+
+                        {/* Video Icon - Positioned to avoid overlap */}
+                        <View style={styles.videoIconContainer}>
+                            <View style={styles.videoIconCircle}>
+                                <Video size={24} color="#ffffff" />
+                            </View>
+                        </View>
+
+                        {/* Partner */}
+                        <View style={styles.participantCard}>
+                            {partnerPhoto ? (
+                                <Image
+                                    source={{ uri: partnerPhoto }}
+                                    style={styles.participantImage}
+                                    resizeMode="cover"
+                                />
+                            ) : (
+                                <View style={[styles.participantImage, styles.participantPlaceholder]}>
+                                    <Text style={styles.participantEmoji}>👤</Text>
+                                </View>
+                            )}
+                            {partner?.id && absentUsers.has(partner.id) && (
+                                <View style={styles.absentOverlay}>
+                                    <Text style={styles.absentText}>ABSENT</Text>
+                                </View>
+                            )}
+                            <Text style={styles.participantName}>
+                                {partner?.name}
+                                {partner?.age && `, ${partner.age}`}
+                            </Text>
+                        </View>
+                    </View>
+
+                    {/* Date Progress */}
+                    <Text style={styles.dateProgress}>
+                        Date number {roundNumber} out of {totalRounds}
+                    </Text>
+
+                    {/* Quote */}
+                    <Text style={styles.quote}>"Could it be love at first sight?"</Text>
+
+                    {/* Action Buttons */}
+                    <View style={styles.lobbyButtons}>
+                        <TouchableOpacity
+                            style={styles.leaveEventButton}
+                            onPress={handleLeaveEvent}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.leaveEventButtonText}>Leave Event</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* Bottom Gradient */}
+                <LinearGradient
+                    colors={['transparent', 'rgba(59, 130, 246, 0.1)', 'rgba(59, 130, 246, 0.2)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.lobbyBottomGradient}
+                />
+            </SafeAreaView>
+        );
+    }
+
     // Waiting between rounds
     if (phase === 'waiting') {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#3B82F6" />
-                <Text style={styles.loadingText}>
-                    Round {roundNumber} of {totalRounds}
-                </Text>
-                <Text style={styles.loadingSubtext}>Getting ready...</Text>
+            <SafeAreaView style={styles.waitingContainer} edges={['top', 'bottom']}>
+                {/* Gradient Background */}
+                <LinearGradient
+                    colors={['#0a0a0a', '#1e293b', '#334155']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                />
+
+                <View style={styles.waitingContent}>
+                    {/* Round Info */}
+                    <View style={styles.waitingHeader}>
+                        <Text style={styles.waitingRoundText}>
+                            {user?.id && absentUsers.has(user.id) ? 'Absent' : `Round ${roundNumber} of ${totalRounds}`}
+                        </Text>
+                        <Text style={styles.waitingSubtitle}>
+                            {user?.id && absentUsers.has(user.id) ? 'You left the event but remain in the lobby' : 'Next date starting soon'}
+                        </Text>
+                    </View>
+
+                    {/* Countdown Timer */}
+                    <View style={styles.waitingTimerContainer}>
+                        <View style={styles.waitingTimerCircle}>
+                            <Text style={styles.waitingTimerText}>
+                                {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                            </Text>
+                            <Text style={styles.waitingTimerLabel}>minutes</Text>
+                        </View>
+                    </View>
+
+                    {/* Progress Indicator */}
+                    <View style={styles.waitingProgressContainer}>
+                        <View style={styles.waitingProgressBar}>
+                            <View
+                                style={[
+                                    styles.waitingProgressFill,
+                                    { width: `${((TIMING.LOBBY - timeLeft) / TIMING.LOBBY) * 100}%` }
+                                ]}
+                            />
+                        </View>
+                        <Text style={styles.waitingProgressText}>
+                            {user?.id && absentUsers.has(user.id) ? 'Waiting for next round...' : 'Preparing your next date...'}
+                        </Text>
+                    </View>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    // Feedback/Decision Screen - Redesigned with animations
+    if (phase === 'feedback') {
+        const partnerPhoto = partner?.imageUrl ? getAbsoluteMediaUrl(partner.imageUrl) : null;
+
+        return (
+            <View style={styles.feedbackContainer}>
+                {/* Gradient Background */}
+                <LinearGradient
+                    colors={['#f8fafc', '#f1f5f9', '#e2e8f0']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                />
+
+                <SafeAreaView style={styles.feedbackSafeArea} edges={['top', 'bottom']}>
+                    {/* Close Button */}
+                    <View style={styles.feedbackHeader}>
+                        <TouchableOpacity 
+                            onPress={handleLeaveEvent} 
+                            style={styles.closeButton}
+                            activeOpacity={0.7}
+                        >
+                            <View style={styles.closeButtonInner}>
+                                <X size={18} color="#64748b" />
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Timer Banner */}
+                    <Animated.View style={[styles.feedbackTimerBannerContainer, timerAnimatedStyle]}>
+                        <View style={styles.feedbackTimerBanner}>
+                            {/* Progress bar background */}
+                            <View style={styles.feedbackTimerBannerProgressBg} />
+                            {/* Progress bar fill */}
+                            <View style={[
+                                styles.feedbackTimerBannerProgressFill,
+                                { width: `${(timeLeft / TIMING.FEEDBACK) * 100}%` }
+                            ]} />
+                            {/* Timer content */}
+                            <View style={styles.feedbackTimerBannerContent}>
+                                <Clock size={16} color="#ffffff" />
+                                <Text style={styles.feedbackTimerBannerText}>
+                                    {timeLeft}s remaining
+                                </Text>
+                            </View>
+                        </View>
+                    </Animated.View>
+
+                    {/* Question */}
+                    <Text style={styles.feedbackQuestion}>Did you like them?</Text>
+
+                    {/* Profile Card with animation */}
+                    <Animated.View style={[styles.feedbackProfileCard, profileAnimatedStyle]}>
+                        <View style={styles.feedbackProfileImageContainer}>
+                            {partnerPhoto ? (
+                                <Image
+                                    source={{ uri: partnerPhoto }}
+                                    style={styles.feedbackProfileImage}
+                                    resizeMode="cover"
+                                />
+                            ) : (
+                                <LinearGradient
+                                    colors={['#a78bfa', '#8b5cf6', '#7c3aed']}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                    style={styles.feedbackProfileImagePlaceholder}
+                                >
+                                    <Text style={styles.feedbackProfileEmoji}>👤</Text>
+                                </LinearGradient>
+                            )}
+                            <View style={styles.feedbackProfileImageShadow} />
+                        </View>
+                        
+                        <View style={styles.feedbackProfileInfo}>
+                            <Text style={styles.feedbackProfileName}>
+                                {partner?.name}
+                                {partner?.age && <Text style={styles.feedbackProfileAge}>, {partner.age}</Text>}
+                            </Text>
+                            
+                            {partner?.bio && (
+                                <Text style={styles.feedbackProfileBio}>{partner.bio}</Text>
+                            )}
+                        </View>
+                    </Animated.View>
+
+                    {/* Action Buttons with animation */}
+                    <Animated.View style={[styles.feedbackActionButtons, buttonsAnimatedStyle]}>
+                        <TouchableOpacity 
+                            style={styles.feedbackDislikeButton} 
+                            onPress={handlePass}
+                            activeOpacity={0.7}
+                        >
+                            <LinearGradient
+                                colors={['#ffffff', '#fff7ed']}
+                                style={styles.feedbackButtonGradient}
+                            >
+                                <View style={styles.feedbackDislikeIconContainer}>
+                                    <ThumbsDown size={22} color="#f97316" strokeWidth={2.5} />
+                                </View>
+                            </LinearGradient>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.feedbackLikeButton}
+                            onPress={handleLike}
+                            activeOpacity={0.8}
+                        >
+                            <LinearGradient
+                                colors={['#3B82F6', '#2563eb', '#1d4ed8']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                                style={styles.feedbackButtonGradient}
+                            >
+                                <Heart size={30} color="#ffffff" fill="#ffffff" strokeWidth={2} />
+                            </LinearGradient>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.feedbackSuperLikeButton}
+                            onPress={handleSuperLike}
+                            activeOpacity={0.7}
+                        >
+                            <LinearGradient
+                                colors={['#ffffff', '#faf5ff']}
+                                style={styles.feedbackButtonGradient}
+                            >
+                                <View style={styles.feedbackSuperLikeIconContainer}>
+                                    <Zap size={22} color="#8b5cf6" strokeWidth={2.5} fill="#8b5cf6" />
+                                </View>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    </Animated.View>
+
+                    {/* Instructions */}
+                    <View style={styles.feedbackInstructions}>
+                        <View style={styles.feedbackInstructionCard}>
+                            <Text style={styles.feedbackInstructionText}>
+                                Tap <Text style={styles.feedbackInstructionHighlight}>'Like'</Text> to show interest.
+                            </Text>
+                            <Text style={styles.feedbackInstructionText}>
+                                If it's mutual, you'll <Text style={styles.feedbackInstructionHighlight}>'Match'</Text> and can chat.
+                            </Text>
+                            <Text style={styles.feedbackInstructionText}>
+                                If not, tap <Text style={styles.feedbackInstructionHighlight}>'Dislike'</Text> to see new matches.
+                            </Text>
+                        </View>
+                    </View>
+                </SafeAreaView>
             </View>
         );
     }
 
-    // Main session UI
+    // Main session UI (Date phase)
     return (
         <View style={styles.container}>
             {/* Video Area */}
             <View style={styles.videoArea}>
-                {/* Partner Video (Placeholder) */}
+                {/* Partner Video - Agora Remote Video */}
                 <View style={styles.partnerVideo}>
-                    <View style={styles.videoPlaceholder}>
-                        <Text style={styles.placeholderEmoji}>👤</Text>
-                        <Text style={styles.placeholderText}>
-                            {partner?.name}'s Video
-                        </Text>
-                    </View>
+                    {remoteUid !== null && agoraEngineRef.current && remoteCanvasRef.current && RtcSurfaceView ? (
+                        <RtcSurfaceView
+                            canvas={remoteCanvasRef.current}
+                            style={StyleSheet.absoluteFill}
+                            zOrderMediaOverlay={true}
+                        />
+                    ) : (
+                        <View style={styles.videoPlaceholder}>
+                            <Text style={styles.placeholderEmoji}>👤</Text>
+                            {phase === 'date' ? (
+                                <Text style={styles.placeholderText}>
+                                    {agoraError || 'Waiting for partner to join...'}
+                                </Text>
+                            ) : (
+                                <Text style={styles.placeholderText}>
+                                    {partner?.name}'s Video
+                                </Text>
+                            )}
+                        </View>
+                    )}
                 </View>
 
-                {/* Self Video */}
+                {/* Self Video - Agora Local Video */}
                 <View style={styles.selfVideo}>
-                    {hasPermission && isCameraOn ? (
-                        <CameraView
-                            ref={cameraRef}
+                    {isCameraOn && agoraEngineRef.current && localCanvasRef.current && RtcSurfaceView ? (
+                        <RtcSurfaceView
+                            canvas={localCanvasRef.current}
                             style={styles.camera}
-                            facing="front"
+                            zOrderMediaOverlay={true}
                         />
                     ) : (
                         <View style={[styles.camera, styles.cameraOff]}>
@@ -332,92 +1186,119 @@ export default function EventSessionScreen() {
                 </View>
             </View>
 
+            {/* Status Bar */}
+            <StatusBar style="light" />
+
             {/* Header */}
             <SafeAreaView style={styles.header} edges={['top']}>
-                <View style={styles.roundBadge}>
-                    <Text style={styles.roundText}>
-                        {roundNumber}/{totalRounds}
-                    </Text>
-                </View>
+                {/* Back Button */}
+                <TouchableOpacity 
+                    onPress={() => router.back()} 
+                    style={styles.backButton}
+                    activeOpacity={0.7}
+                >
+                    <ArrowLeft size={24} color="#ffffff" />
+                </TouchableOpacity>
 
+                {/* Timer Container - Centered */}
                 <View style={styles.timerContainer}>
-                    <Clock size={16} color={phase === 'feedback' ? '#f59e0b' : '#3B82F6'} />
-                    <Text
-                        style={[
-                            styles.timer,
-                            phase === 'feedback' && styles.timerWarning,
-                        ]}
-                    >
-                        {formatTime(timeLeft)}
-                    </Text>
+                    <View style={styles.timerBadge}>
+                        <Text style={styles.timerText}>
+                            {formatTime(timeLeft)}
+                        </Text>
+                    </View>
                 </View>
 
-                <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-                    <SkipForward size={20} color="#64748b" />
+                {/* Camera Switch Button */}
+                <TouchableOpacity 
+                    onPress={async () => {
+                        if (agoraEngineRef.current) {
+                            await agoraEngineRef.current.switchCamera();
+                        }
+                    }}
+                    style={styles.cameraSwitchButton}
+                    activeOpacity={0.7}
+                >
+                    <RotateCw size={20} color="#ffffff" />
                 </TouchableOpacity>
             </SafeAreaView>
 
-            {/* Phase Banner */}
-            <View style={styles.phaseBanner}>
-                <Text style={styles.phaseText}>
-                    {phase === 'prep'
-                        ? '🎬 Get Ready!'
-                        : phase === 'date'
-                            ? '💬 Chat with ' + partner?.name
-                            : '🤔 Make Your Decision'}
-                </Text>
-            </View>
-
-            {/* Partner Info */}
-            <View style={styles.partnerInfo}>
-                <Text style={styles.partnerName}>
-                    {partner?.name}
-                    {partner?.age && <Text style={styles.partnerAge}>, {partner.age}</Text>}
-                </Text>
-                {partner?.bio && (
-                    <Text style={styles.partnerBio}>{partner.bio}</Text>
-                )}
-            </View>
+            {/* Time notification overlay */}
+            {showTimeNotification && (
+                <Animated.View
+                    style={[styles.timeNotification, {
+                        opacity: withTiming(1, { duration: 300 }),
+                        transform: [{ translateY: withTiming(0, { duration: 300 }) }]
+                    }]}
+                    entering={withTiming(1, { duration: 300 })}
+                    exiting={withTiming(0, { duration: 300 })}
+                >
+                    <View style={styles.timeNotificationContent}>
+                        <Clock size={16} color="#ffffff" />
+                        <Text style={styles.timeNotificationText}>
+                            {showTimeNotification}
+                        </Text>
+                    </View>
+                </Animated.View>
+            )}
 
             {/* Controls */}
             <SafeAreaView style={styles.controls} edges={['bottom']}>
-                {/* Camera/Mic Controls */}
-                <View style={styles.mediaControls}>
+                <View style={styles.controlsRow}>
+                    {/* Microphone Button - Left */}
                     <TouchableOpacity
-                        style={[styles.mediaButton, !isCameraOn && styles.mediaButtonOff]}
-                        onPress={() => setIsCameraOn(!isCameraOn)}
+                        style={styles.controlButton}
+                        onPress={async () => {
+                            const newState = !isMicOn;
+                            setIsMicOn(newState);
+                            if (agoraEngineRef.current) {
+                                await agoraEngineRef.current.enableLocalAudio(newState);
+                            }
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}
+                        activeOpacity={0.7}
                     >
-                        {isCameraOn ? (
-                            <Video size={20} color="#ffffff" />
+                        {isMicOn ? (
+                            <Mic size={24} color="#374151" />
                         ) : (
-                            <VideoOff size={20} color="#ef4444" />
+                            <MicOff size={24} color="#374151" />
                         )}
                     </TouchableOpacity>
 
+                    {/* End Call Button - Center (Red) */}
                     <TouchableOpacity
-                        style={[styles.mediaButton, !isMicOn && styles.mediaButtonOff]}
-                        onPress={() => setIsMicOn(!isMicOn)}
+                        style={styles.endCallButton}
+                        onPress={handlePass}
+                        activeOpacity={0.8}
                     >
-                        {isMicOn ? (
-                            <Mic size={20} color="#ffffff" />
+                        <Phone size={24} color="#ffffff" />
+                    </TouchableOpacity>
+
+                    {/* Video Button - Right */}
+                    <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={async () => {
+                            const newState = !isCameraOn;
+                            setIsCameraOn(newState);
+                            if (agoraEngineRef.current) {
+                                await agoraEngineRef.current.enableLocalVideo(newState);
+                                if (newState && localCanvasRef.current) {
+                                    await agoraEngineRef.current.startPreview();
+                                } else {
+                                    await agoraEngineRef.current.stopPreview();
+                                }
+                            }
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}
+                        activeOpacity={0.7}
+                    >
+                        {isCameraOn ? (
+                            <Video size={24} color="#374151" />
                         ) : (
-                            <MicOff size={20} color="#ef4444" />
+                            <VideoOff size={24} color="#374151" />
                         )}
                     </TouchableOpacity>
                 </View>
-
-                {/* Decision Buttons (only in feedback phase) */}
-                {phase === 'feedback' && (
-                    <View style={styles.decisionButtons}>
-                        <TouchableOpacity style={styles.passButton} onPress={handlePass}>
-                            <X size={32} color="#ef4444" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.likeButton} onPress={handleLike}>
-                            <Heart size={32} color="#22c55e" fill="#22c55e" />
-                        </TouchableOpacity>
-                    </View>
-                )}
             </SafeAreaView>
         </View>
     );
@@ -445,6 +1326,13 @@ const styles = StyleSheet.create({
         color: '#94a3b8',
         fontSize: 14,
     },
+    errorText: {
+        marginTop: 16,
+        color: '#ef4444',
+        fontSize: 14,
+        textAlign: 'center',
+        paddingHorizontal: 20,
+    },
     videoArea: {
         flex: 1,
         position: 'relative',
@@ -470,8 +1358,8 @@ const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 100,
         right: 16,
-        width: 100,
-        height: 140,
+        width: 120,
+        height: 120,
         borderRadius: 12,
         overflow: 'hidden',
         borderWidth: 2,
@@ -494,35 +1382,71 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 16,
-        paddingVertical: 8,
+        paddingTop: 8,
+        paddingBottom: 12,
+        zIndex: 10,
     },
-    roundBadge: {
-        backgroundColor: 'rgba(59, 130, 246, 0.2)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 12,
-    },
-    roundText: {
-        color: '#3B82F6',
-        fontSize: 14,
-        fontWeight: '600',
+    backButton: {
+        width: 40,
+        height: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     timerContainer: {
-        flexDirection: 'row',
+        flex: 1,
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
+    },
+    timerBadge: {
+        backgroundColor: 'rgba(55, 65, 81, 0.9)',
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 20,
-        gap: 6,
+        minWidth: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    timer: {
-        color: '#3B82F6',
-        fontSize: 24,
-        fontWeight: '700',
+    timerText: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: '600',
+        letterSpacing: 0.5,
     },
-    timerWarning: {
-        color: '#f59e0b',
+    cameraSwitchButton: {
+        width: 40,
+        height: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    timeNotification: {
+        position: 'absolute',
+        top: 80,
+        left: 16,
+        right: 16,
+        alignItems: 'center',
+        zIndex: 1000,
+    },
+    timeNotificationContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 25,
+        gap: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 10,
+    },
+    timeNotificationText: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: '600',
+        letterSpacing: 0.5,
     },
     skipButton: {
         width: 40,
@@ -578,24 +1502,41 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        padding: 20,
+        paddingBottom: 20,
+        paddingHorizontal: 20,
+        paddingTop: 16,
     },
-    mediaControls: {
+    controlsRow: {
         flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 16,
-        marginBottom: 16,
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
     },
-    mediaButton: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    controlButton: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: '#ffffff',
         justifyContent: 'center',
         alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
     },
-    mediaButtonOff: {
-        backgroundColor: 'rgba(239, 68, 68, 0.3)',
+    endCallButton: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: '#ef4444',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#ef4444',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
     },
     decisionButtons: {
         flexDirection: 'row',
@@ -691,5 +1632,499 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
         color: '#ffffff',
+    },
+    lobbyContainer: {
+        flex: 1,
+        backgroundColor: '#f8fafc',
+    },
+    lobbyContent: {
+        flex: 1,
+        paddingHorizontal: 24,
+        paddingTop: 40,
+        paddingBottom: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    lobbyTitle: {
+        fontSize: 28,
+        fontWeight: '700',
+        color: '#0f172a',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    lobbySubtitle: {
+        fontSize: 14,
+        color: '#94a3b8',
+        marginBottom: 48,
+        textAlign: 'center',
+    },
+    participantsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 32,
+        gap: 20,
+        position: 'relative',
+    },
+    participantCard: {
+        alignItems: 'center',
+        width: 140,
+    },
+    participantImage: {
+        width: 120,
+        height: 160,
+        borderRadius: 16,
+        backgroundColor: '#e2e8f0',
+        marginBottom: 12,
+    },
+    participantPlaceholder: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#e2e8f0',
+    },
+    participantEmoji: {
+        fontSize: 48,
+    },
+    participantName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#0f172a',
+        textAlign: 'center',
+    },
+    videoIconContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    videoIconCircle: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: '#3B82F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 4,
+        borderColor: '#ffffff',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    lobbyBottomGradient: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 200,
+        pointerEvents: 'none',
+    },
+    lobbyTimerContainer: {
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    lobbyTimerBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 24,
+        gap: 8,
+        borderWidth: 1.5,
+        borderColor: 'rgba(59, 130, 246, 0.2)',
+    },
+    lobbyTimerText: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#3B82F6',
+        letterSpacing: 0.3,
+    },
+    dateProgress: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#475569',
+        marginBottom: 16,
+        textAlign: 'center',
+    },
+    quote: {
+        fontSize: 18,
+        fontStyle: 'italic',
+        color: '#64748b',
+        marginBottom: 48,
+        textAlign: 'center',
+    },
+    lobbyButtons: {
+        width: '100%',
+        gap: 16,
+    },
+    startDateButton: {
+        borderRadius: 16,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    startDateGradient: {
+        paddingVertical: 18,
+        alignItems: 'center',
+    },
+    startDateButtonText: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#ffffff',
+    },
+    leaveEventButton: {
+        paddingVertical: 18,
+        borderRadius: 16,
+        backgroundColor: '#ffffff',
+        borderWidth: 2,
+        borderColor: '#3B82F6',
+        alignItems: 'center',
+    },
+    leaveEventButtonText: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#3B82F6',
+    },
+    // Feedback/Decision Screen Styles - Enhanced
+    feedbackContainer: {
+        flex: 1,
+    },
+    feedbackSafeArea: {
+        flex: 1,
+    },
+    feedbackHeader: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        paddingHorizontal: 20,
+        paddingTop: 12,
+    },
+    closeButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    closeButtonInner: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    feedbackTimerBannerContainer: {
+        paddingHorizontal: 20,
+        marginTop: 8,
+        marginBottom: 12,
+    },
+    feedbackTimerBanner: {
+        position: 'relative',
+        backgroundColor: '#3B82F6',
+        borderRadius: 12,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#3B82F6',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+        minHeight: 48,
+    },
+    feedbackTimerBannerProgressBg: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        borderBottomLeftRadius: 12,
+        borderBottomRightRadius: 12,
+    },
+    feedbackTimerBannerProgressFill: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        height: 4,
+        backgroundColor: '#ffffff',
+        borderBottomLeftRadius: 12,
+    },
+    feedbackTimerBannerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+    },
+    feedbackTimerBannerText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#ffffff',
+        letterSpacing: 0.5,
+    },
+    feedbackQuestion: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: '#0f172a',
+        textAlign: 'center',
+        marginBottom: 24,
+        paddingHorizontal: 24,
+        letterSpacing: -0.5,
+    },
+    feedbackProfileCard: {
+        alignItems: 'center',
+        paddingHorizontal: 24,
+        marginBottom: 24,
+    },
+    feedbackProfileImageContainer: {
+        position: 'relative',
+        marginBottom: 20,
+    },
+    feedbackProfileImage: {
+        width: 180,
+        height: 180,
+        borderRadius: 20,
+        backgroundColor: '#f3f4f6',
+    },
+    feedbackProfileImagePlaceholder: {
+        width: 180,
+        height: 180,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    feedbackProfileImageShadow: {
+        position: 'absolute',
+        width: 180,
+        height: 180,
+        borderRadius: 20,
+        backgroundColor: 'transparent',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 6,
+        top: 0,
+        left: 0,
+    },
+    feedbackProfileEmoji: {
+        fontSize: 60,
+    },
+    feedbackProfileInfo: {
+        alignItems: 'center',
+        maxWidth: '90%',
+    },
+    feedbackProfileName: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: '#0f172a',
+        marginBottom: 8,
+        textAlign: 'center',
+        letterSpacing: -0.5,
+    },
+    feedbackProfileAge: {
+        fontWeight: '400',
+        color: '#64748b',
+    },
+    feedbackProfileBio: {
+        fontSize: 16,
+        color: '#475569',
+        textAlign: 'center',
+        lineHeight: 24,
+        marginTop: 8,
+    },
+    feedbackActionButtons: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 16,
+        marginBottom: 20,
+        paddingHorizontal: 24,
+    },
+    feedbackDislikeButton: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        overflow: 'hidden',
+        shadowColor: '#f97316',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        elevation: 5,
+    },
+    feedbackLikeButton: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        overflow: 'hidden',
+        shadowColor: '#3B82F6',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    feedbackSuperLikeButton: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        overflow: 'hidden',
+        shadowColor: '#8b5cf6',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        elevation: 5,
+    },
+    feedbackButtonGradient: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    feedbackDislikeIconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(249, 115, 22, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    feedbackSuperLikeIconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    feedbackInstructions: {
+        paddingHorizontal: 24,
+        alignItems: 'center',
+    },
+    feedbackInstructionCard: {
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderRadius: 16,
+        width: '100%',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.05)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    feedbackInstructionText: {
+        fontSize: 14,
+        color: '#64748b',
+        textAlign: 'center',
+        lineHeight: 22,
+        marginBottom: 4,
+    },
+    feedbackInstructionHighlight: {
+        color: '#3B82F6',
+        fontWeight: '700',
+    },
+    // Waiting screen styles
+    waitingContainer: {
+        flex: 1,
+        backgroundColor: '#0a0a0a',
+    },
+    waitingContent: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+    },
+    waitingHeader: {
+        alignItems: 'center',
+        marginBottom: 40,
+    },
+    waitingRoundText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#ffffff',
+        marginBottom: 8,
+    },
+    waitingSubtitle: {
+        fontSize: 16,
+        color: '#94a3b8',
+        textAlign: 'center',
+    },
+    waitingTimerContainer: {
+        alignItems: 'center',
+        marginBottom: 40,
+    },
+    waitingTimerCircle: {
+        width: 150,
+        height: 150,
+        borderRadius: 75,
+        borderWidth: 4,
+        borderColor: '#3B82F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        marginBottom: 20,
+    },
+    waitingTimerText: {
+        fontSize: 36,
+        fontWeight: 'bold',
+        color: '#ffffff',
+    },
+    waitingTimerLabel: {
+        fontSize: 14,
+        color: '#94a3b8',
+        marginTop: 4,
+    },
+    waitingProgressContainer: {
+        alignItems: 'center',
+        width: '100%',
+    },
+    waitingProgressBar: {
+        width: '80%',
+        height: 4,
+        backgroundColor: '#374151',
+        borderRadius: 2,
+        marginBottom: 16,
+        overflow: 'hidden',
+    },
+    waitingProgressFill: {
+        height: '100%',
+        backgroundColor: '#3B82F6',
+        borderRadius: 2,
+    },
+    waitingProgressText: {
+        fontSize: 14,
+        color: '#94a3b8',
+        textAlign: 'center',
+    },
+    // Absent overlay styles
+    absentOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderRadius: 16,
+    },
+    absentText: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
     },
 });

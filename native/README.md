@@ -32,7 +32,7 @@ npx expo start --android
 - **Navigation**: Expo Router (file-based routing)
 - **State Management**: React Context + Hooks
 - **Styling**: React Native StyleSheet
-- **Video**: expo-av
+- **Video**: expo-av + react-native-agora (for live video calls)
 - **Real-time**: Socket.IO
 - **Storage**: expo-secure-store (encrypted)
 
@@ -65,6 +65,44 @@ Set your API URL in `app.json`:
 }
 ```
 
+### Agora Video Calls Setup
+
+The app uses `react-native-agora` for live video calls during speed dating events. Since this requires native modules, you need to use Expo development builds:
+
+```bash
+# Install EAS CLI
+npm install -g eas-cli
+
+# Configure development build
+eas build:configure
+
+# Build development client (use the helper script to disable capability sync)
+./build-dev.sh
+
+# Or manually set the environment variable:
+EXPO_NO_CAPABILITY_SYNC=1 eas build --profile development --platform ios
+# or
+EXPO_NO_CAPABILITY_SYNC=1 eas build --profile development --platform android
+
+# Note: Capability syncing must be disabled to avoid conflicts with existing
+# Apple Developer account configurations. The environment variable must be set
+# before running the eas build command.
+```
+
+Alternatively, use Expo prebuild:
+```bash
+npx expo prebuild
+cd ios && pod install  # For iOS only
+```
+
+**Important**: The server must have Agora credentials configured in `server/.env`:
+```
+AGORA_APP_ID=your_app_id
+AGORA_APP_CERTIFICATE=your_certificate
+```
+
+See `AGORA_IMPLEMENTATION_REVIEW.md` for full implementation details.
+
 ### Building for Production
 
 ```bash
@@ -96,8 +134,34 @@ kill servers -
 
 pkill -f "expo"
 
-start expo:
+## 🚀 Running Development Build
 
- npx expo start
+After installing the development build on your device:
 
- cd /Users/user/Desktop/slush-new-version-react/native
+```bash
+# Start the development server (use --dev-client flag for custom builds)
+npx expo start --dev-client
+
+# The server will show a QR code and connection URL
+# In your development build app:
+# 1. Shake device or tap the dev menu
+# 2. Select "Enter URL manually" or scan QR code
+# 3. Enter the connection URL shown in terminal
+```
+
+**Troubleshooting "No development servers found":**
+- Ensure device and computer are on the same Wi‑Fi network
+- Check firewall isn't blocking the connection
+- Try entering the URL manually: `exp://YOUR_IP:8081`
+- Restart the dev server: `npx expo start --dev-client --clear`
+
+**Quick commands:**
+```bash
+# Kill all Expo servers
+pkill -f "expo"
+
+# Start dev server for development build
+cd /Users/user/Desktop/slush-new-version-react/native
+npx expo start --dev-client
+```
+npx expo start --dev-client

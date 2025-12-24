@@ -35,6 +35,7 @@ import {
 } from 'lucide-react-native';
 
 import { useAuth } from '../../hooks/useAuth';
+import { useBackNavigation } from '../../hooks/useBackNavigation';
 import { getAbsoluteMediaUrl } from '../../services/apiConfig';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -43,6 +44,7 @@ const HEADER_HEIGHT = SCREEN_HEIGHT * 0.5;
 export default function ProfileScreen() {
     const router = useRouter();
     const { user, logout, fetchCurrentProfile } = useAuth();
+    const handleBack = useBackNavigation('/(main)/feed');
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [bioExpanded, setBioExpanded] = useState(false);
 
@@ -122,7 +124,7 @@ export default function ProfileScreen() {
                         <TouchableOpacity
                             onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                router.back();
+                                handleBack();
                             }}
                             style={styles.circleButton}
                         >

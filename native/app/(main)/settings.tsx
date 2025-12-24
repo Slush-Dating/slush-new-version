@@ -36,6 +36,7 @@ import Slider from '@react-native-community/slider';
 import * as Haptics from 'expo-haptics';
 
 import { useAuth } from '../../hooks/useAuth';
+import { useBackNavigation } from '../../hooks/useBackNavigation';
 
 interface UserSettings {
     notifications: boolean;
@@ -48,6 +49,7 @@ interface UserSettings {
 export default function SettingsScreen() {
     const router = useRouter();
     const { user, logout } = useAuth();
+    const handleBack = useBackNavigation('/(main)/profile');
     const [isLoading, setIsLoading] = useState(false);
     const [settings, setSettings] = useState<UserSettings>({
         notifications: true,
@@ -57,9 +59,9 @@ export default function SettingsScreen() {
         ageRangeMax: 50,
     });
 
-    const handleBack = () => {
+    const onBackPress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.back();
+        handleBack();
     };
 
     const handleToggle = (key: keyof UserSettings) => {
@@ -119,7 +121,7 @@ export default function SettingsScreen() {
         <SafeAreaView style={styles.container} edges={['top']}>
             {/* Header */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
                     <ArrowLeft size={24} color="#1A202C" />
                 </TouchableOpacity>
                 <Text style={styles.title}>Settings</Text>

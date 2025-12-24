@@ -26,10 +26,12 @@ import { getAbsoluteMediaUrl } from '../../../services/apiConfig';
 import { getCurrentUserId } from '../../../services/authService';
 import socketService from '../../../services/socketService';
 import { colors } from '../../../constants/theme';
+import { useBackNavigation } from '../../../hooks/useBackNavigation';
 
 export default function ChatScreen() {
     const router = useRouter();
     const { matchId } = useLocalSearchParams<{ matchId: string }>();
+    const handleBack = useBackNavigation('/(main)/chat');
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
@@ -40,6 +42,7 @@ export default function ChatScreen() {
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
     const [otherUserId, setOtherUserId] = useState<string | null>(null);
+    const [isOtherUserOnline, setIsOtherUserOnline] = useState<boolean | null>(null);
 
     const flatListRef = useRef<FlatList>(null);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -103,6 +106,13 @@ export default function ChatScreen() {
         fetchData();
     }, [fetchData]);
 
+    // Request user status when otherUserId is available and socket is connected
+    useEffect(() => {
+        if (otherUserId && socketService.isConnected()) {
+            socketService.getUserStatus(otherUserId);
+        }
+    }, [otherUserId]);
+
     // Socket connection for real-time messages and typing indicators
     useEffect(() => {
         if (!matchId || !currentUserId) return;
@@ -154,15 +164,25 @@ export default function ChatScreen() {
             }
         };
 
+        // Listen for user status changes (online/offline)
+        const handleUserStatusChange = (data: { userId: string; isOnline: boolean }) => {
+            if (data.userId === otherUserId) {
+                setIsOtherUserOnline(data.isOnline);
+                console.log('👤 Other user status updated:', data.isOnline ? 'online' : 'offline');
+            }
+        };
+
         socketService.onNewMessage(handleNewMessage);
         socketService.onTypingStart(handleTypingStart);
         socketService.onTypingStop(handleTypingStop);
+        socketService.onUserStatusChange(handleUserStatusChange);
 
         return () => {
             socketService.leaveRoom(matchId);
             socketService.off('new_message', handleNewMessage);
             socketService.off('typing_start', handleTypingStart);
             socketService.off('typing_stop', handleTypingStop);
+            socketService.off('user_status_change', handleUserStatusChange);
             // Cleanup typing timeout
             if (typingTimeoutRef.current) {
                 clearTimeout(typingTimeoutRef.current);
@@ -284,9 +304,9 @@ export default function ChatScreen() {
         }
     };
 
-    const handleBack = () => {
+    const onBackPress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.back();
+        handleBack();
     };
 
     const getSenderId = (message: ChatMessage): string => {
@@ -344,7 +364,7 @@ export default function ChatScreen() {
         <SafeAreaView style={styles.container} edges={['top']}>
             {/* Header */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
                     <ArrowLeft size={24} color={colors.textPrimary} />
                 </TouchableOpacity>
 
@@ -357,7 +377,15 @@ export default function ChatScreen() {
                     )}
                     <View>
                         <Text style={styles.headerName}>{displayName}</Text>
-                        <Text style={styles.headerStatus}>Active now</Text>
+                        <Text style={styles.headerStatus}>
+                            {isOtherUserTyping 
+                                ? 'Typing...' 
+                                : isOtherUserOnline === true 
+                                    ? 'Active now' 
+                                    : isOtherUserOnline === false 
+                                        ? 'Offline' 
+                                        : '...'}
+                        </Text>
                     </View>
                 </TouchableOpacity>
 

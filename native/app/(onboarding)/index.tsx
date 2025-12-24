@@ -27,11 +27,15 @@ import {
     MapPin,
     Check,
     Sparkles,
+    Trash2,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
+import * as FileSystem from 'expo-file-system/legacy';
 
 import { useAuth } from '../../hooks/useAuth';
+import { getApiBaseUrl } from '../../services/apiConfig';
+import * as authService from '../../services/authService';
 
 const STEPS = [
     { id: 'name-dob', title: 'Nice to meet you. What\'s your name?', subtitle: 'This is how you\'ll appear to others' },
@@ -75,7 +79,8 @@ export default function OnboardingScreen() {
         { question: 'My simple pleasures include...', answer: '' }
     ]);
     const [photos, setPhotos] = useState<string[]>([]);
-    const [videos, setVideos] = useState<string[]>([]);
+    const [videos, setVideos] = useState<{ url: string, thumbnailUrl?: string }[]>([]);
+    const [uploadingSlots, setUploadingSlots] = useState<{ [key: string]: boolean }>({});
 
     const step = STEPS[currentStep];
     const progress = (currentStep + 1) / STEPS.length;
@@ -122,8 +127,7 @@ export default function OnboardingScreen() {
                     bio: combinedBio,
                     prompts,
                     photos,
-                    videos,
-                    onboardingCompleted: true,
+                    videos: videos.map(v => v.url),
                 });
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (err) {
@@ -142,39 +146,126 @@ export default function OnboardingScreen() {
         }
     };
 
-    const pickImage = async () => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [3, 4],
-            quality: 0.8,
-        });
+    const uploadFile = async (fileUri: string, fileType: 'image' | 'video') => {
+        try {
+            const API_BASE_URL = getApiBaseUrl();
+            const token = await authService.getToken();
 
-        if (!result.canceled && result.assets[0]) {
-            setPhotos((prev) => [...prev, result.assets[0].uri]);
+            if (!token) {
+                throw new Error('Not authenticated');
+            }
+
+            // Get file info
+            const fileInfo = await FileSystem.getInfoAsync(fileUri);
+            if (!fileInfo.exists) {
+                throw new Error('File does not exist');
+            }
+
+            // Create form data
+            const formData = new FormData();
+            formData.append('file', {
+                uri: fileUri,
+                type: fileType === 'video' ? 'video/mp4' : 'image/jpeg',
+                name: `upload.${fileType === 'video' ? 'mp4' : 'jpg'}`
+            } as any);
+
+            const response = await fetch(`${API_BASE_URL}/auth/upload`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data',
+                },
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+                throw new Error(error.message || 'Upload failed');
+            }
+
+            const result = await response.json();
+            const isVideoUpload = fileType === 'video';
+            return isVideoUpload ? { url: result.url, thumbnailUrl: result.thumbnailUrl } : result.url;
+        } catch (error) {
+            console.error('Upload failed:', error);
+            throw error;
+        }
+    };
+
+    const pickImage = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [3, 4],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets[0]) {
+                const slotKey = `photo-${photos.length}`;
+                setUploadingSlots(prev => ({ ...prev, [slotKey]: true }));
+
+                try {
+                    // Upload image to server
+                    const uploadedUrl = await uploadFile(result.assets[0].uri, 'image');
+                    setPhotos((prev) => [...prev, typeof uploadedUrl === 'string' ? uploadedUrl : (uploadedUrl as any).url]);
+                } catch (uploadError) {
+                    console.error('Image upload failed:', uploadError);
+                    Alert.alert(
+                        'Upload Failed',
+                        'Failed to upload image. Please try again.',
+                        [{ text: 'OK' }]
+                    );
+                } finally {
+                    setUploadingSlots(prev => ({ ...prev, [slotKey]: false }));
+                }
+            }
+        } catch (error) {
+            console.error('Image selection failed:', error);
+            Alert.alert(
+                'Error',
+                'Failed to select image. Please try again.',
+                [{ text: 'OK' }]
+            );
         }
     };
 
     const pickVideo = async () => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-            allowsEditing: true,
-            quality: 0.8,
-            videoMaxDuration: 30, // 30 seconds max
-        });
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+                allowsEditing: true,
+                quality: 0.8,
+            });
 
-        if (!result.canceled && result.assets[0]) {
-            // Check video duration
-            const duration = result.assets[0].duration || 0;
-            if (duration > 30) {
-                Alert.alert(
-                    'Video Too Long',
-                    'Please select a video that is 30 seconds or shorter.',
-                    [{ text: 'OK' }]
-                );
-                return;
+            if (!result.canceled && result.assets[0]) {
+                const slotKey = `video-${videos.length}`;
+                setUploadingSlots(prev => ({ ...prev, [slotKey]: true }));
+
+                try {
+                    // Upload video to server
+                    console.log('📤 Uploading video from:', result.assets[0].uri);
+                    const uploadResult = await uploadFile(result.assets[0].uri, 'video') as { url: string, thumbnailUrl: string };
+                    console.log('✅ Video upload success:', uploadResult);
+                    setVideos((prev) => [...prev, uploadResult]);
+                } catch (uploadError) {
+                    console.error('Video upload failed:', uploadError);
+                    Alert.alert(
+                        'Upload Failed',
+                        'Failed to upload video. Please try again.',
+                        [{ text: 'OK' }]
+                    );
+                } finally {
+                    setUploadingSlots(prev => ({ ...prev, [slotKey]: false }));
+                }
             }
-            setVideos((prev) => [...prev, result.assets[0].uri]);
+        } catch (error) {
+            console.error('Video selection failed:', error);
+            Alert.alert(
+                'Error',
+                'Failed to select video. Please try again.',
+                [{ text: 'OK' }]
+            );
         }
     };
 
@@ -194,6 +285,23 @@ export default function OnboardingScreen() {
         const newPrompts = [...prompts];
         newPrompts[index].answer = answer;
         setPrompts(newPrompts);
+    };
+
+    const deleteVideo = (index: number) => {
+        Alert.alert(
+            'Delete Video',
+            'Are you sure you want to delete this video?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                        setVideos(prev => prev.filter((_, i) => i !== index));
+                    },
+                },
+            ]
+        );
     };
 
 
@@ -346,42 +454,70 @@ export default function OnboardingScreen() {
                         <View style={styles.mediaSection}>
                             <Text style={styles.mediaSectionTitle}>Photos</Text>
                             <View style={styles.photosGrid}>
-                                {Array.from({ length: 4 }).map((_, index) => (
-                                    <TouchableOpacity
-                                        key={`photo-${index}`}
-                                        style={styles.mediaSlot}
-                                        onPress={photos[index] ? undefined : pickImage}
-                                    >
-                                        {photos[index] ? (
-                                            <Image source={{ uri: photos[index] }} style={styles.media} />
-                                        ) : (
-                                            <Camera size={24} color="#64748b" />
-                                        )}
-                                    </TouchableOpacity>
-                                ))}
+                                {Array.from({ length: 4 }).map((_, index) => {
+                                    const slotKey = `photo-${index}`;
+                                    return (
+                                        <TouchableOpacity
+                                            key={slotKey}
+                                            style={styles.mediaSlot}
+                                            onPress={photos[index] || uploadingSlots[slotKey] ? undefined : pickImage}
+                                        >
+                                            {uploadingSlots[slotKey] ? (
+                                                <View style={styles.loadingOverlay}>
+                                                    <ActivityIndicator color="#3B82F6" />
+                                                    <Text style={styles.loadingText}>Uploading...</Text>
+                                                </View>
+                                            ) : photos[index] ? (
+                                                <Image
+                                                    source={{ uri: (photos[index].startsWith('http') || photos[index].startsWith('file')) ? photos[index] : `${getApiBaseUrl().replace('/api', '')}${photos[index]}` }}
+                                                    style={styles.media}
+                                                    resizeMode="cover"
+                                                />
+                                            ) : (
+                                                <View style={styles.iconContainer}>
+                                                    <Camera size={24} color="#64748b" />
+                                                </View>
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                })}
                             </View>
                         </View>
 
                         <View style={styles.mediaSection}>
                             <Text style={styles.mediaSectionTitle}>Videos</Text>
-                            <Text style={styles.mediaHint}>Max 30 seconds • Up to 100MB</Text>
                             <View style={styles.photosGrid}>
-                                {Array.from({ length: 2 }).map((_, index) => (
-                                    <TouchableOpacity
-                                        key={`video-${index}`}
-                                        style={styles.mediaSlot}
-                                        onPress={videos[index] ? undefined : pickVideo}
-                                    >
-                                        {videos[index] ? (
-                                            <View style={styles.videoPreview}>
-                                                <Video size={24} color="#64748b" />
-                                                <Text style={styles.videoText}>Video {index + 1}</Text>
-                                            </View>
-                                        ) : (
-                                            <Sparkles size={24} color="#64748b" />
-                                        )}
-                                    </TouchableOpacity>
-                                ))}
+                                {Array.from({ length: 2 }).map((_, index) => {
+                                    const slotKey = `video-${index}`;
+                                    return (
+                                        <TouchableOpacity
+                                            key={slotKey}
+                                            style={styles.mediaSlot}
+                                            onPress={videos[index] || uploadingSlots[slotKey] ? undefined : pickVideo}
+                                        >
+                                            {uploadingSlots[slotKey] ? (
+                                                <View style={styles.loadingOverlay}>
+                                                    <ActivityIndicator color="#3B82F6" />
+                                                    <Text style={styles.loadingText}>Trimming & Optimizing...</Text>
+                                                </View>
+                                            ) : videos[index] ? (
+                                                <View style={styles.iconContainer}>
+                                                    <Video size={24} color="#64748b" />
+                                                    <TouchableOpacity
+                                                        style={styles.deleteButton}
+                                                        onPress={() => deleteVideo(index)}
+                                                    >
+                                                        <Trash2 size={16} color="#ef4444" />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            ) : (
+                                                <View style={styles.iconContainer}>
+                                                    <Sparkles size={24} color="#64748b" />
+                                                </View>
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                })}
                             </View>
                         </View>
                     </View>
@@ -393,11 +529,8 @@ export default function OnboardingScreen() {
     };
 
     return (
-        <LinearGradient
-            colors={['#0f172a', '#1e1b4b', '#0f172a']}
-            style={styles.gradient}
-        >
-            <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
+            <SafeAreaView style={styles.safeArea}>
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                     style={styles.keyboardView}
@@ -470,15 +603,16 @@ export default function OnboardingScreen() {
                     </View>
                 </KeyboardAvoidingView>
             </SafeAreaView>
-        </LinearGradient>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    gradient: {
-        flex: 1,
-    },
     container: {
+        flex: 1,
+        backgroundColor: '#FFFFFF',
+    },
+    safeArea: {
         flex: 1,
     },
     keyboardView: {
@@ -495,7 +629,7 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'rgba(0, 0, 0, 0.05)',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -505,18 +639,18 @@ const styles = StyleSheet.create({
     },
     progressBar: {
         height: 4,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'rgba(0, 0, 0, 0.1)',
         borderRadius: 2,
         overflow: 'hidden',
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#e74c3c',
+        backgroundColor: '#3B82F6',
         borderRadius: 2,
     },
     stepText: {
         fontSize: 12,
-        color: '#94a3b8',
+        color: '#64748b',
     },
     scrollContent: {
         flexGrow: 1,
@@ -529,25 +663,25 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 28,
         fontWeight: '700',
-        color: '#ffffff',
+        color: '#1A202C',
         marginBottom: 8,
     },
     subtitle: {
         fontSize: 16,
-        color: '#94a3b8',
+        color: '#4A5568',
     },
     inputWrapper: {
         gap: 8,
     },
     textInput: {
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: '#F8F9FA',
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(0, 0, 0, 0.05)',
         paddingHorizontal: 20,
         paddingVertical: 16,
         fontSize: 18,
-        color: '#ffffff',
+        color: '#1A202C',
     },
     bioInput: {
         height: 150,
@@ -562,21 +696,21 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     genderOption: {
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: '#F8F9FA',
         borderRadius: 16,
         borderWidth: 2,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(0, 0, 0, 0.05)',
         padding: 20,
         alignItems: 'center',
     },
     genderSelected: {
         borderColor: '#3B82F6',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        backgroundColor: '#DBEAFE',
     },
     genderText: {
         fontSize: 18,
         fontWeight: '500',
-        color: '#94a3b8',
+        color: '#4A5568',
     },
     genderTextSelected: {
         color: '#3B82F6',
@@ -584,7 +718,7 @@ const styles = StyleSheet.create({
     photosGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 12,
+        justifyContent: 'space-between',
     },
     photoSlot: {
         width: '30%',
@@ -635,7 +769,7 @@ const styles = StyleSheet.create({
     sectionLabel: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#ffffff',
+        color: '#1A202C',
         marginBottom: 12,
     },
     interestsWrapper: {
@@ -643,7 +777,7 @@ const styles = StyleSheet.create({
     },
     interestsHint: {
         fontSize: 16,
-        color: '#94a3b8',
+        color: '#4A5568',
         textAlign: 'center',
         marginBottom: 8,
     },
@@ -654,10 +788,10 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     interestItem: {
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: '#F8F9FA',
         borderRadius: 24,
         borderWidth: 2,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(0, 0, 0, 0.05)',
         paddingHorizontal: 16,
         paddingVertical: 10,
         flexDirection: 'row',
@@ -667,12 +801,12 @@ const styles = StyleSheet.create({
     },
     interestSelected: {
         borderColor: '#3B82F6',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        backgroundColor: '#DBEAFE',
     },
     interestText: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#94a3b8',
+        color: '#4A5568',
     },
     interestTextSelected: {
         color: '#3B82F6',
@@ -684,14 +818,14 @@ const styles = StyleSheet.create({
     promptQuestion: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#ffffff',
+        color: '#1A202C',
     },
     promptInput: {
         height: 80,
         textAlignVertical: 'top',
     },
     mediaWrapper: {
-        gap: 32,
+        gap: 20,
     },
     mediaSection: {
         gap: 12,
@@ -699,35 +833,70 @@ const styles = StyleSheet.create({
     mediaSectionTitle: {
         fontSize: 20,
         fontWeight: '600',
-        color: '#ffffff',
+        color: '#1A202C',
     },
     mediaHint: {
         fontSize: 12,
         color: '#64748b',
     },
     mediaSlot: {
-        width: '48%',
+        flex: 1,
+        maxWidth: '48%',
         aspectRatio: 0.75,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: '#F8F9FA',
         borderRadius: 12,
         borderWidth: 2,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(0, 0, 0, 0.05)',
         borderStyle: 'dashed',
         justifyContent: 'center',
         alignItems: 'center',
         overflow: 'hidden',
+        marginHorizontal: 2,
     },
     media: {
         width: '100%',
         height: '100%',
     },
-    videoPreview: {
+    iconContainer: {
+        justifyContent: 'center',
         alignItems: 'center',
-        gap: 4,
+        width: '100%',
+        height: '100%',
+    },
+    videoPreview: {
+        width: '100%',
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     videoText: {
         fontSize: 10,
         color: '#64748b',
+    },
+    loadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 10,
+    },
+    loadingText: {
+        fontSize: 10,
+        color: '#3B82F6',
+        marginTop: 8,
+        textAlign: 'center',
+        fontWeight: '600',
+    },
+    deleteButton: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     footer: {
         padding: 24,

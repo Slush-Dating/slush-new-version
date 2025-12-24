@@ -36,6 +36,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useAuth } from '../../hooks/useAuth';
+import { useBackNavigation } from '../../hooks/useBackNavigation';
 
 const PREMIUM_FEATURES = [
     {
@@ -73,6 +74,7 @@ const PREMIUM_FEATURES = [
 export default function PremiumScreen() {
     const router = useRouter();
     const { user, updateUser } = useAuth();
+    const handleBack = useBackNavigation('/(main)/profile');
     const [isUpgrading, setIsUpgrading] = useState(false);
 
     // Animation for crown
@@ -107,9 +109,9 @@ export default function PremiumScreen() {
         ],
     }));
 
-    const handleBack = () => {
+    const onBackPress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.back();
+        handleBack();
     };
 
     const handleUpgrade = async () => {
@@ -127,7 +129,7 @@ export default function PremiumScreen() {
             Alert.alert(
                 '🎉 Welcome to Premium!',
                 'You now have access to all premium features.',
-                [{ text: 'Awesome!', onPress: () => router.back() }]
+                [{ text: 'Awesome!', onPress: () => handleBack() }]
             );
         } catch (error) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -141,7 +143,7 @@ export default function PremiumScreen() {
         return (
             <SafeAreaView style={styles.container} edges={['top']}>
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                    <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
                         <ArrowLeft size={24} color="#ffffff" />
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>Premium</Text>

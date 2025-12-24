@@ -155,7 +155,7 @@ curl -X GET https://staging.slushdating.com/api/auth/profile \
 ## Notes
 
 - All file uploads support images (JPEG, PNG, WebP) and videos (MP4, MOV)
-- Maximum file size: 100MB
+- Maximum file size: 2GB (videos are automatically cropped to 30 seconds)
 - Video processing requires FFmpeg (check `/api/auth/health/ffmpeg`)
 - Admin endpoints require admin authentication
 - Premium features are gated by `isPremium` user flag

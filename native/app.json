@@ -20,7 +20,8 @@
         "NSCameraUsageDescription": "Slush needs camera access for video recording and profile photos.",
         "NSMicrophoneUsageDescription": "Slush needs microphone access for video recording and voice calls.",
         "NSPhotoLibraryUsageDescription": "Slush needs photo library access to upload profile photos.",
-        "NSLocationWhenInUseUsageDescription": "Slush uses your location to find matches near you."
+        "NSLocationWhenInUseUsageDescription": "Slush uses your location to find matches near you.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -42,6 +43,7 @@
       "bundler": "metro"
     },
     "plugins": [
+      "expo-dev-client",
       "expo-router",
       "expo-secure-store",
       [

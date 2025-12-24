@@ -129,21 +129,24 @@ export const generateThumbnail = (inputPath, outputPath, timestamp = '00:00:01')
 
 /**
  * Compress video with optimized settings for mobile streaming
- * Auto-trims to 30 seconds max for dating app UX
  */
 export const compressVideo = (inputPath, outputPath, options = {}) => {
     return new Promise((resolve, reject) => {
         const settings = { ...DEFAULT_SETTINGS, ...options };
-        const maxDuration = options.maxDuration || 30; // 30 seconds max
+        const maxDuration = options.maxDuration; // No default limit
 
-        console.log(`[VideoProcessor] Compressing video: ${inputPath} (max ${maxDuration}s)`);
+        console.log(`[VideoProcessor] Compressing video: ${inputPath}${maxDuration ? ` (max ${maxDuration}s)` : ' (no duration limit)'}`);
         const startTime = Date.now();
 
-        ffmpeg(inputPath)
-            .duration(maxDuration) // Auto-trim to 30 seconds
+        const ffmpegCommand = ffmpeg(inputPath);
+        if (maxDuration) {
+            ffmpegCommand.inputOptions([`-t ${maxDuration}`]); // Trimming at input level is much faster
+        }
+
+        ffmpegCommand
             .videoCodec(settings.codec)
             .addOption('-crf', settings.crf.toString())
-            .addOption('-preset', settings.preset)
+            .addOption('-preset', 'superfast')
             .addOption('-profile:v', settings.profile)
             .addOption('-level', settings.level)
             .addOption('-pix_fmt', settings.pixelFormat)
@@ -263,7 +266,13 @@ export const processVideo = async (inputPath, options = {}) => {
         // 3. Compress video
         const compressedFilename = `${baseName}_compressed.mp4`;
         const compressedPath = path.join(baseDir, 'videos', 'compressed', compressedFilename);
-        await compressVideo(inputPath, compressedPath);
+
+        // Pass maxDuration and other options to compressVideo
+        const compressOptions = {
+            maxDuration: options.maxDuration || 30,
+            ...options
+        };
+        await compressVideo(inputPath, compressedPath, compressOptions);
 
         // Get compressed file size
         const compressedStats = fs.statSync(compressedPath);

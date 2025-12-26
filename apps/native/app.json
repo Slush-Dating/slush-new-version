@@ -2,11 +2,12 @@
   "expo": {
     "name": "Slush Dating",
     "slug": "slush-dating",
-    "version": "1.0.0",
+    "version": "2.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "jsEngine": "hermes",
     "scheme": "slush",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -14,14 +15,35 @@
       "backgroundColor": "#3B82F6"
     },
     "ios": {
-      "supportsTablet": false,
+      "supportsTablet": true,
+      "requireFullScreen": true,
       "bundleIdentifier": "com.mobile.app.virtualspeeddate",
+      "buildNumber": "9",
       "infoPlist": {
-        "NSCameraUsageDescription": "Slush needs camera access for video recording and profile photos.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSExceptionDomains": {
+            "staging.slushdating.com": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true,
+              "NSExceptionRequiresForwardSecrecy": false
+            }
+          }
+        },
+        "NSCameraUsageDescription": "Allow Slush to access your camera for video calls and photos.",
         "NSMicrophoneUsageDescription": "Slush needs microphone access for video recording and voice calls.",
-        "NSPhotoLibraryUsageDescription": "Slush needs photo library access to upload profile photos.",
-        "NSLocationWhenInUseUsageDescription": "Slush uses your location to find matches near you.",
-        "ITSAppUsesNonExemptEncryption": false
+        "NSPhotoLibraryUsageDescription": "Allow Slush to access your photos for profile pictures.",
+        "NSLocationWhenInUseUsageDescription": "Allow Slush to use your location to find matches near you.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UISupportedInterfaceOrientations": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationPortraitUpsideDown",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ],
+        "NSFaceIDUsageDescription": "Allow Slush to access your Face ID biometric data.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Slush to access your location to find potential matches and events near you even when the app is in the background.",
+        "NSLocationAlwaysUsageDescription": "Allow Slush to access your location to find potential matches and events near you even when the app is in the background."
       }
     },
     "android": {
@@ -43,7 +65,6 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-dev-client",
       "expo-router",
       "expo-secure-store",
       [

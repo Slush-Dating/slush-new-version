@@ -23,5 +23,13 @@
     "server:dev": "npm run dev -w packages/server",
     "install:all": "npm install",
     "create:branch": "node scripts/create-branch.js"
+  },
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.17",
+    "@types/react-dom": "19.1.11"
   }
 }

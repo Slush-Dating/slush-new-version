@@ -3,6 +3,7 @@
  * Handles auth state and redirects
  */
 
+import '../utils/polyfills';
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -189,7 +190,7 @@ const styles = StyleSheet.create({
     errorTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: '#ffffff',
+        color: '#ef4444',
         marginBottom: 16,
     },
     errorText: {

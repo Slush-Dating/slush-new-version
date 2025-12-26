@@ -84,3 +84,4 @@ jobs:
             eas build --platform android --profile preview
           fi
         working-directory: apps/native
+

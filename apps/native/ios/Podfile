@@ -12,6 +12,7 @@ def ccache_enabled?(podfile_properties)
   podfile_properties['apple.ccacheEnabled'] == 'true'
 end
 
+ENV['RCT_NEW_ARCH_ENABLED'] = '1' if podfile_properties['newArchEnabled'] == 'true'
 ENV['RCT_NEW_ARCH_ENABLED'] ||= '0' if podfile_properties['newArchEnabled'] == 'false'
 ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] ||= podfile_properties['EX_DEV_CLIENT_NETWORK_INSPECTOR']
 ENV['RCT_USE_RN_DEP'] ||= '1' if podfile_properties['ios.buildReactNativeFromSource'] != 'true' && podfile_properties['newArchEnabled'] != 'false'
@@ -56,5 +57,24 @@ target 'SlushDating' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        # Force dSYM generation for all pods to fix missing symbols in Archives
+        config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+        
+        # Improve framework consistency for distribution
+        if config.name == 'Release'
+          config.build_settings['BUILD_LIBRARIES_FOR_DISTRIBUTION'] = 'YES'
+          # Prevent symbols from being stripped so the Archive contains what Apple needs
+          config.build_settings['STRIP_INSTALLED_PRODUCT'] = 'NO'
+          config.build_settings['COPY_PHASE_STRIP'] = 'NO'
+        end
+
+        # Disable Bitcode as it's deprecated and can cause symbol issues
+        config.build_settings['ENABLE_BITCODE'] = 'NO'
+        config.build_settings['GCC_GENERATE_DEBUGGING_SYMBOLS'] = 'YES'
+      end
+    end
   end
 end

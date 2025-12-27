@@ -108,7 +108,7 @@ router.post('/action', authenticate, async (req, res) => {
             return res.status(400).json({ message: 'Missing required fields' });
         }
 
-        if (!['like', 'pass', 'super_like'].includes(action)) {
+        if (!['like', 'pass', 'super_like', 'icebreaker'].includes(action)) {
             return res.status(400).json({ message: 'Invalid action' });
         }
 
@@ -344,9 +344,9 @@ router.get('/', authenticate, async (req, res) => {
                 // If isAdmin wasn't populated, check the user document
                 const userDoc = await User.findById(otherUser._id || otherUser).select('isAdmin email name').lean();
                 if (userDoc) {
-                    isAdminUser = userDoc.isAdmin === true || 
-                                 (userDoc.email && /admin/i.test(userDoc.email)) ||
-                                 (userDoc.name && /admin/i.test(userDoc.name));
+                    isAdminUser = userDoc.isAdmin === true ||
+                        (userDoc.email && /admin/i.test(userDoc.email)) ||
+                        (userDoc.name && /admin/i.test(userDoc.name));
                 }
             }
             if (isAdminUser) return null;
@@ -369,11 +369,17 @@ router.get('/', authenticate, async (req, res) => {
                 }
             }
 
-            // Check if this match was created via a super-like
+            // Check if this match was created via a super-like or icebreaker
             const isSuperLike = match.actions.some(action =>
                 (action.action === 'super_like') &&
                 ((action.fromUser.toString() === userId.toString() && action.toUser.toString() === otherUser._id?.toString()) ||
-                 (action.fromUser.toString() === otherUser._id?.toString() && action.toUser.toString() === userId.toString()))
+                    (action.fromUser.toString() === otherUser._id?.toString() && action.toUser.toString() === userId.toString()))
+            );
+
+            const isIceBreaker = match.actions.some(action =>
+                (action.action === 'icebreaker') &&
+                ((action.fromUser.toString() === userId.toString() && action.toUser.toString() === otherUser._id?.toString()) ||
+                    (action.fromUser.toString() === otherUser._id?.toString() && action.toUser.toString() === userId.toString()))
             );
 
             return {
@@ -395,6 +401,7 @@ router.get('/', authenticate, async (req, res) => {
                 isNew: match.matchedAt &&
                     (Date.now() - new Date(match.matchedAt).getTime()) < 24 * 60 * 60 * 1000, // New if matched in last 24 hours
                 isSuperLike,
+                isIceBreaker,
                 lastMessage: lastMessage ? {
                     content: lastMessage.content,
                     createdAt: lastMessage.createdAt,
@@ -454,11 +461,11 @@ router.get('/liked-you', authenticate, async (req, res) => {
         const userId = req.userId;
         const userObjectId = new mongoose.Types.ObjectId(userId);
 
-        // Find matches where current user is toUser and action is like/super_like, and it's not a match yet
+        // Find matches where current user is toUser and action is like/super_like/icebreaker, and it's not a match yet
         const likes = await Match.find({
             $or: [
-                { user1: userObjectId, actions: { $elemMatch: { toUser: userObjectId, action: { $in: ['like', 'super_like'] } } } },
-                { user2: userObjectId, actions: { $elemMatch: { toUser: userObjectId, action: { $in: ['like', 'super_like'] } } } }
+                { user1: userObjectId, actions: { $elemMatch: { toUser: userObjectId, action: { $in: ['like', 'super_like', 'icebreaker'] } } } },
+                { user2: userObjectId, actions: { $elemMatch: { toUser: userObjectId, action: { $in: ['like', 'super_like', 'icebreaker'] } } } }
             ],
             isMatch: false
         })
@@ -485,9 +492,9 @@ router.get('/liked-you', authenticate, async (req, res) => {
             } else {
                 const userDoc = await User.findById(otherUser._id || otherUser).select('isAdmin email name').lean();
                 if (userDoc) {
-                    isAdminUser = userDoc.isAdmin === true || 
-                                 (userDoc.email && /admin/i.test(userDoc.email)) ||
-                                 (userDoc.name && /admin/i.test(userDoc.name));
+                    isAdminUser = userDoc.isAdmin === true ||
+                        (userDoc.email && /admin/i.test(userDoc.email)) ||
+                        (userDoc.name && /admin/i.test(userDoc.name));
                 }
             }
             if (isAdminUser) return null;
@@ -504,9 +511,15 @@ router.get('/liked-you', authenticate, async (req, res) => {
                 }
             }
 
-            // Check if this like was a super-like
+            // Check if this like was a super-like or icebreaker
             const isSuperLike = match.actions.some(action =>
                 action.action === 'super_like' &&
+                action.fromUser.toString() === otherUser._id?.toString() &&
+                action.toUser.toString() === userId.toString()
+            );
+
+            const isIceBreaker = match.actions.some(action =>
+                action.action === 'icebreaker' &&
                 action.fromUser.toString() === otherUser._id?.toString() &&
                 action.toUser.toString() === userId.toString()
             );
@@ -521,7 +534,8 @@ router.get('/liked-you', authenticate, async (req, res) => {
                     : null,
                 bio: otherUser.bio || '',
                 likedAt: match.updatedAt,
-                isSuperLike
+                isSuperLike,
+                isIceBreaker
             };
         });
 

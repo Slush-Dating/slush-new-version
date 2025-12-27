@@ -16,12 +16,14 @@ export function useBackNavigation(fallbackRoute?: string) {
     const segments = useSegments();
 
     const handleBack = useCallback(() => {
-        // If a fallback route is explicitly provided, always use it
-        // This ensures we go back to the correct screen (e.g., profile -> settings -> profile)
-        // We use replace to go back to the fallback route without adding to the stack
+        // Try to go back if possible first to respect user history
+        if (router.canGoBack()) {
+            router.back();
+            return;
+        }
+
+        // If we can't go back, use fallback if provided
         if (fallbackRoute) {
-            // Use dismissAll or replace depending on navigation context
-            // For tab screens, replace should work correctly
             router.replace(fallbackRoute);
             return;
         }
@@ -33,7 +35,7 @@ export function useBackNavigation(fallbackRoute?: string) {
             // If we can't go back, navigate to a sensible default
             // Determine fallback based on current route context
             const currentSegment = segments?.[0] || '';
-            
+
             if (currentSegment === '(main)') {
                 // If we're in main app, go to profile tab (safe default)
                 router.replace('/(main)/profile');

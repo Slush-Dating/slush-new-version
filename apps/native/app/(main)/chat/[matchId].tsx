@@ -67,7 +67,7 @@ export default function ChatScreen() {
                 matchService.getMatches(),
             ]);
 
-            setMessages(messagesData.messages.reverse());
+            setMessages(messagesData.messages);
 
             // Find match info
             const match = matchesData.find(m => m.matchId === matchId || m.id === matchId);
@@ -378,12 +378,12 @@ export default function ChatScreen() {
                     <View>
                         <Text style={styles.headerName}>{displayName}</Text>
                         <Text style={styles.headerStatus}>
-                            {isOtherUserTyping 
-                                ? 'Typing...' 
-                                : isOtherUserOnline === true 
-                                    ? 'Active now' 
-                                    : isOtherUserOnline === false 
-                                        ? 'Offline' 
+                            {isOtherUserTyping
+                                ? 'Typing...'
+                                : isOtherUserOnline === true
+                                    ? 'Active now'
+                                    : isOtherUserOnline === false
+                                        ? 'Offline'
                                         : '...'}
                         </Text>
                     </View>

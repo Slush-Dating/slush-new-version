@@ -33,10 +33,14 @@ jobs:
           npm install
 
       - name: Build React app for staging
-        run: npm run build:staging
+        run: |
+          cd apps/web
+          npm run build:staging
 
       - name: Sync with Capacitor iOS (staging)
-        run: CAPACITOR_HOSTNAME=staging.slushdating.com npx cap sync ios
+        run: |
+          cd apps/web
+          CAPACITOR_HOSTNAME=staging.slushdating.com npx cap sync ios
         env:
           CAPACITOR_HOSTNAME: staging.slushdating.com
 
@@ -48,13 +52,13 @@ jobs:
       - name: Build iOS app
         if: github.event.inputs.build_ipa == 'true' || github.event_name == 'push'
         run: |
-          cd ios/App
+          cd apps/web/ios/App
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive
 
       - name: Create IPA for TestFlight
         if: github.event.inputs.build_ipa == 'true'
         run: |
-          cd ios/App
+          cd apps/web/ios/App
           xcodebuild -exportArchive -archivePath build/App.xcarchive -exportOptionsPlist exportOptions.plist -exportPath build/
 
       - name: Upload IPA artifact
@@ -62,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: slush-ios-staging-${{ github.sha }}
-          path: ios/App/build/App.ipa
+          path: apps/web/ios/App/build/App.ipa
           retention-days: 30
 
       - name: Build summary

@@ -159,3 +159,11 @@ pkill -f "expo"
 # Start dev server for development build (from monorepo root)
 npm run native:start
 ```
+
+bash
+# Terminal 1: Start server with staging DB
+cd packages/server
+MONGODB_URI="$MONGODB_URI_STAGING" PORT=5001 node index.js
+# Terminal 2: Run tests
+cd packages/server
+node test-events-automated.js

@@ -254,6 +254,44 @@ export const eventService = {
 
         return response.json();
     },
+
+    leaveEvent: async (id: string): Promise<{ message: string; booking: any; event: any }> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/events/${id}/leave`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to leave event');
+        }
+        return response.json();
+    },
+
+    rejoinEvent: async (id: string): Promise<{ message: string; booking: any; event: any }> => {
+        const token = getAuthToken();
+        if (!token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/events/${id}/rejoin`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to rejoin event');
+        }
+        return response.json();
+    },
 };
 
 export interface AgoraTokenResponse {
@@ -273,6 +311,8 @@ export interface PartnerResponse {
         imageUrl: string | null;
     };
     totalAvailable: number;
+    totalExcluded?: number;
+    allPartnersExhausted?: boolean;
 }
 
 export const agoraService = {
@@ -299,7 +339,7 @@ export const agoraService = {
         return response.json();
     },
 
-    getNextPartner: async (eventId: string): Promise<PartnerResponse> => {
+    getNextPartner: async (eventId: string, pairedPartnerIds: string[] = []): Promise<PartnerResponse> => {
         const token = getAuthToken();
         if (!token) {
             throw new Error('Not authenticated');
@@ -310,7 +350,8 @@ export const agoraService = {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
-            }
+            },
+            body: JSON.stringify({ pairedPartnerIds })
         });
 
         if (!response.ok) {

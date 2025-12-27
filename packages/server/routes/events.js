@@ -651,6 +651,128 @@ router.post('/:id/leave', authMiddleware, async (req, res) => {
 
 /**
  * @swagger
+ * /api/events/{id}/rejoin:
+ *   post:
+ *     summary: Rejoin event after leaving
+ *     tags: [Events]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Event ID
+ *     responses:
+ *       200:
+ *         description: Successfully rejoined event
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 booking:
+ *                   type: object
+ *                 event:
+ *                   type: object
+ *       400:
+ *         description: Event has ended or user was not previously in event
+ *       404:
+ *         description: Event or booking not found
+ */
+router.post('/:id/rejoin', authMiddleware, async (req, res) => {
+    try {
+        const event = await Event.findById(req.params.id);
+        if (!event) {
+            return res.status(404).json({ message: 'Event not found' });
+        }
+
+        // Check if event is still active (not completed or cancelled)
+        if (event.status === 'Completed' || event.status === 'Cancelled') {
+            return res.status(400).json({ message: 'Cannot rejoin a completed or cancelled event' });
+        }
+
+        // Find booking with status 'absent'
+        const booking = await EventBooking.findOneAndUpdate(
+            { eventId: event._id, userId: req.userId, status: 'absent' },
+            { status: 'booked' },
+            { new: true }
+        );
+
+        if (!booking) {
+            // Check if user already has an active booking
+            const existingBooking = await EventBooking.findOne({
+                eventId: event._id,
+                userId: req.userId,
+                status: 'booked'
+            });
+            if (existingBooking) {
+                return res.status(400).json({ message: 'You are already actively in this event' });
+            }
+            return res.status(404).json({ message: 'No previous booking found to rejoin. You may need to book the event again.' });
+        }
+
+        // Get user to add back to correct participant array
+        const user = await User.findById(req.userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const userGender = user.gender || 'other';
+
+        // Add user back to participant arrays
+        const userIdStr = req.userId.toString();
+        if (userGender === 'man') {
+            if (!event.maleParticipants.some(id => id.toString() === userIdStr)) {
+                event.maleParticipants.push(req.userId);
+            }
+        } else if (userGender === 'woman') {
+            if (!event.femaleParticipants.some(id => id.toString() === userIdStr)) {
+                event.femaleParticipants.push(req.userId);
+            }
+        } else {
+            if (!event.otherParticipants.some(id => id.toString() === userIdStr)) {
+                event.otherParticipants.push(req.userId);
+            }
+        }
+
+        await event.save();
+
+        // Emit socket event to notify other participants
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`event_session_${event._id}`).emit('user_rejoined', {
+                userId: req.userId,
+                eventId: event._id
+            });
+        }
+
+        console.log(`[Events API] User ${req.userId} rejoined event ${event._id}`);
+
+        res.json({
+            message: 'Successfully rejoined event! You can now be matched with partners.',
+            booking: {
+                eventId: event._id,
+                status: booking.status,
+                rejoinedAt: new Date()
+            },
+            event: {
+                maleCount: event.maleParticipants.length,
+                femaleCount: event.femaleParticipants.length,
+                otherCount: event.otherParticipants.length
+            }
+        });
+    } catch (err) {
+        console.error('Rejoin event error:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+/**
+ * @swagger
  * /api/events/{id}/booking-status:
  *   get:
  *     summary: Check if user has booked event

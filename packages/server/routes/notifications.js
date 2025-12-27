@@ -186,10 +186,17 @@ router.get('/', authenticate, async (req, res) => {
  */
 router.get('/unread-count', authenticate, async (req, res) => {
     try {
-        const count = await Notification.countDocuments({
+        const { type } = req.query;
+        const query = {
             userId: req.userId,
             isRead: false
-        });
+        };
+
+        if (type && type !== 'all') {
+            query.type = type;
+        }
+
+        const count = await Notification.countDocuments(query);
         res.json({ unreadCount: count });
     } catch (err) {
         console.error('Get unread count error:', err);
@@ -220,8 +227,15 @@ router.post('/:id/read', authenticate, async (req, res) => {
 // POST /api/notifications/read-all - Mark all notifications as read
 router.post('/read-all', authenticate, async (req, res) => {
     try {
+        const { type } = req.query;
+        const query = { userId: req.userId, isRead: false };
+
+        if (type && type !== 'all') {
+            query.type = type;
+        }
+
         const result = await Notification.updateMany(
-            { userId: req.userId, isRead: false },
+            query,
             { isRead: true }
         );
 

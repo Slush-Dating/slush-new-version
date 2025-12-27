@@ -9,7 +9,7 @@ import { getToken } from './authService';
 /**
  * Helper function to get auth headers
  */
-const getAuthHeaders = async (): Promise<HeadersInit> => {
+const getAuthHeaders = async (): Promise<Record<string, string>> => {
     const token = await getToken();
     return {
         'Content-Type': 'application/json',
@@ -33,13 +33,13 @@ const handleApiError = async (response: Response): Promise<never> => {
     }
 
     if (response.status >= 400 && response.status < 500) {
-        const error = await response.json().catch(() => ({ message: 'Client error' }));
+        const error = await response.json().catch(() => ({ message: `Client error (${response.status})` }));
         throw new Error(error.message || `Request failed (${response.status})`);
     }
 
     // Network or other errors
-    const error = await response.json().catch(() => ({ message: 'Network error' }));
-    throw new Error(error.message || 'Request failed');
+    const error = await response.json().catch(() => ({ message: `Network/Server error (${response.status})` }));
+    throw new Error(error.message || `Request failed (${response.status})`);
 };
 
 // =============================================================================
@@ -78,6 +78,7 @@ export interface Match {
     context: 'video_feed' | 'live_event';
     isNew: boolean;
     isSuperLike?: boolean;
+    isIceBreaker?: boolean;
     lastMessage?: {
         content: string;
         createdAt: string;
@@ -117,9 +118,12 @@ export interface ChatMessage {
     _id: string;
     matchId: string;
     senderId: string | { _id: string; name: string; photos?: string[] };
+    receiverId: string;
     content: string;
+    messageType: 'text' | 'image' | 'system';
     createdAt: string;
-    read: boolean;
+    isRead: boolean;
+    readAt?: string;
 }
 
 // =============================================================================
@@ -348,6 +352,38 @@ export const eventService = {
 
         return response.json();
     },
+
+    async leaveEvent(id: string): Promise<{ message: string; booking: any; event: any }> {
+        const API_BASE_URL = getApiBaseUrl();
+        const headers = await getAuthHeaders();
+
+        const response = await fetch(`${API_BASE_URL}/events/${id}/leave`, {
+            method: 'POST',
+            headers,
+        });
+
+        if (!response.ok) {
+            return handleApiError(response);
+        }
+
+        return response.json();
+    },
+
+    async rejoinEvent(id: string): Promise<{ message: string; booking: any; event: any }> {
+        const API_BASE_URL = getApiBaseUrl();
+        const headers = await getAuthHeaders();
+
+        const response = await fetch(`${API_BASE_URL}/events/${id}/rejoin`, {
+            method: 'POST',
+            headers,
+        });
+
+        if (!response.ok) {
+            return handleApiError(response);
+        }
+
+        return response.json();
+    },
 };
 
 // =============================================================================
@@ -491,22 +527,6 @@ export const matchService = {
 
         return response.json();
     },
-
-    async leaveEvent(id: string): Promise<{ message: string; booking: any; event: any }> {
-        const API_BASE_URL = getApiBaseUrl();
-        const headers = await getAuthHeaders();
-
-        const response = await fetch(`${API_BASE_URL}/events/${id}/leave`, {
-            method: 'POST',
-            headers,
-        });
-
-        if (!response.ok) {
-            return handleApiError(response);
-        }
-
-        return response.json();
-    },
 };
 
 // =============================================================================
@@ -520,7 +540,7 @@ const getChatListFromMatches = async (): Promise<any[]> => {
     try {
         console.log('📋 Using fallback: constructing chat list from matches');
         const matches = await matchService.getMatches();
-        
+
         // Transform matches into chat list format
         const chatList = matches.map(match => ({
             matchId: match.id || match.matchId,
@@ -639,7 +659,7 @@ export const chatService = {
 
             // Read response text once (can only read body once)
             const responseText = await response.text();
-            
+
             if (!response.ok) {
                 // Handle 404 specifically - endpoint might not be deployed yet
                 if (response.status === 404) {
@@ -684,21 +704,21 @@ export const chatService = {
             let data;
             try {
                 console.log('📋 Chat list raw response (first 500 chars):', responseText.substring(0, 500));
-                
+
                 if (!responseText || responseText.trim().length === 0) {
                     console.warn('📋 Chat list response is empty');
                     return [];
                 }
-                
+
                 data = JSON.parse(responseText);
             } catch (parseError) {
                 console.error('📋 Failed to parse chat list response as JSON:', parseError);
                 console.error('📋 Response text:', responseText);
                 throw new Error('Invalid response format from server');
             }
-            
+
             console.log('📋 Chat list fetched successfully:', Array.isArray(data) ? `${data.length} chats` : 'Invalid format');
-            
+
             // Ensure we return an array
             if (!Array.isArray(data)) {
                 console.warn('📋 Chat list response is not an array:', typeof data, data);
@@ -720,7 +740,7 @@ export const chatService = {
                 name: error?.name,
                 stack: error?.stack?.substring(0, 200)
             });
-            
+
             // Re-throw the error so the caller can handle it
             throw error;
         }
@@ -749,13 +769,14 @@ export const agoraService = {
         return response.json();
     },
 
-    async getNextPartner(eventId: string): Promise<{ partner: any; totalAvailable: number }> {
+    async getNextPartner(eventId: string, pairedPartnerIds: string[] = []): Promise<{ partner: any; totalAvailable: number; totalExcluded?: number; allPartnersExhausted?: boolean }> {
         const API_BASE_URL = getApiBaseUrl();
         const headers = await getAuthHeaders();
 
         const response = await fetch(`${API_BASE_URL}/agora/event/${eventId}/next-partner`, {
             method: 'POST',
             headers,
+            body: JSON.stringify({ pairedPartnerIds }),
         });
 
         if (!response.ok) {
@@ -819,13 +840,34 @@ export const notificationService = {
         }
     },
 
-    async markAllAsRead(): Promise<void> {
+    async getUnreadCount(type?: string): Promise<{ unreadCount: number }> {
         const API_BASE_URL = getApiBaseUrl();
         const headers = await getAuthHeaders();
 
-        const response = await fetch(`${API_BASE_URL}/notifications/read-all`, {
+        const url = type
+            ? `${API_BASE_URL}/notifications/unread-count?type=${type}`
+            : `${API_BASE_URL}/notifications/unread-count`;
+
+        const response = await fetch(url, { headers });
+
+        if (!response.ok) {
+            return handleApiError(response);
+        }
+
+        return response.json();
+    },
+
+    async markAllAsRead(type?: string): Promise<void> {
+        const API_BASE_URL = getApiBaseUrl();
+        const headers = await getAuthHeaders();
+
+        const url = type
+            ? `${API_BASE_URL}/notifications/read-all?type=${type}`
+            : `${API_BASE_URL}/notifications/read-all`;
+
+        const response = await fetch(url, {
             method: 'POST',
-            headers,
+            headers
         });
 
         if (!response.ok) {

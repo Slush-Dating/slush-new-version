@@ -156,7 +156,9 @@ export function MatchOverlay({
         >
             <Animated.View style={[styles.container, containerStyle]}>
                 <LinearGradient
-                    colors={['rgba(59, 130, 246, 0.9)', 'rgba(14, 165, 233, 0.9)']}
+                    colors={['rgba(59, 130, 246, 0.95)', 'rgba(139, 92, 246, 0.85)', 'rgba(236, 72, 153, 0.75)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
                     style={styles.gradient}
                 >
                     <TouchableOpacity
@@ -168,11 +170,18 @@ export function MatchOverlay({
 
                     <Animated.View style={[styles.content, contentStyle]}>
                         {/* Title */}
-                        <Text style={styles.itsAMatch}>
-                            {matchData.isIceBreaker ? 'Ice Broken!' : "It's a Match!"}
-                        </Text>
+                        <View style={styles.titleContainer}>
+                            <Text style={styles.itsAMatch}>
+                                {matchData.isIceBreaker ? 'Ice Broken!' : "It's a Match!"}
+                            </Text>
+                            <View style={styles.sparkleContainer}>
+                                <Text style={styles.sparkle}>✨</Text>
+                                <Text style={styles.sparkle}>💫</Text>
+                                <Text style={styles.sparkle}>✨</Text>
+                            </View>
+                        </View>
                         <Text style={styles.subtitle}>
-                            You and {matchData.user.name} liked each other
+                            You and <Text style={styles.nameHighlight}>{matchData.user.name}</Text> liked each other
                         </Text>
 
                         {/* Photos with Heart */}
@@ -229,17 +238,26 @@ export function MatchOverlay({
                             <TouchableOpacity
                                 style={styles.chatButton}
                                 onPress={handleStartChat}
+                                activeOpacity={0.8}
                             >
-                                <MessageCircle size={20} color={matchData.isIceBreaker ? "#0EA5E9" : "#3B82F6"} />
-                                <Text style={[
-                                    styles.chatButtonText,
-                                    matchData.isIceBreaker && { color: '#0EA5E9' }
-                                ]}>Send Message</Text>
+                                <LinearGradient
+                                    colors={matchData.isIceBreaker ?
+                                        ['#0EA5E9', '#7DD3FC'] :
+                                        ['#3B82F6', '#8B5CF6']
+                                    }
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.chatButtonGradient}
+                                >
+                                    <MessageCircle size={22} color="#ffffff" />
+                                    <Text style={styles.chatButtonText}>Send Message</Text>
+                                </LinearGradient>
                             </TouchableOpacity>
 
                             <TouchableOpacity
                                 style={styles.continueButton}
                                 onPress={handleDismiss}
+                                activeOpacity={0.7}
                             >
                                 <Text style={styles.continueButtonText}>Keep Swiping</Text>
                             </TouchableOpacity>
@@ -275,27 +293,49 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 24,
     },
+    titleContainer: {
+        alignItems: 'center',
+        marginBottom: 12,
+    },
     itsAMatch: {
-        fontSize: 42,
+        fontSize: 44,
         fontWeight: '800',
         color: '#ffffff',
         textAlign: 'center',
+        textShadowColor: 'rgba(0, 0, 0, 0.4)',
+        textShadowOffset: { width: 0, height: 3 },
+        textShadowRadius: 6,
         marginBottom: 8,
-        textShadowColor: 'rgba(0, 0, 0, 0.3)',
-        textShadowOffset: { width: 0, height: 2 },
-        textShadowRadius: 4,
+    },
+    sparkleContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 8,
+    },
+    sparkle: {
+        fontSize: 20,
+        opacity: 0.9,
     },
     subtitle: {
         fontSize: 18,
-        color: 'rgba(255, 255, 255, 0.9)',
+        color: 'rgba(255, 255, 255, 0.95)',
         textAlign: 'center',
-        marginBottom: 40,
+        marginBottom: 48,
+        fontWeight: '500',
+    },
+    nameHighlight: {
+        color: '#ffffff',
+        fontWeight: '700',
+        textShadowColor: 'rgba(0, 0, 0, 0.3)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
     },
     photosContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 48,
+        marginBottom: 56,
+        paddingHorizontal: 16,
     },
     photoWrapper: {
         width: 130,
@@ -320,51 +360,67 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     heartContainer: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        backgroundColor: '#3B82F6',
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: '#ffffff',
         justifyContent: 'center',
         alignItems: 'center',
-        marginHorizontal: -20,
+        marginHorizontal: -24,
         zIndex: 10,
-        shadowColor: '#3B82F6',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.5,
-        shadowRadius: 12,
-        elevation: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.4,
+        shadowRadius: 16,
+        elevation: 16,
+        borderWidth: 3,
+        borderColor: '#ffffff',
     },
     buttons: {
         width: '100%',
-        gap: 16,
+        gap: 20,
     },
     chatButton: {
+        borderRadius: 20,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 8,
+    },
+    chatButtonGradient: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#ffffff',
-        paddingVertical: 18,
-        borderRadius: 16,
-        gap: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 4,
+        paddingVertical: 20,
+        paddingHorizontal: 24,
+        gap: 10,
     },
     chatButtonText: {
         fontSize: 18,
-        fontWeight: '600',
-        color: '#3B82F6',
+        fontWeight: '700',
+        color: '#ffffff',
+        textShadowColor: 'rgba(0, 0, 0, 0.2)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
     },
     continueButton: {
         alignItems: 'center',
-        paddingVertical: 12,
+        paddingVertical: 16,
+        paddingHorizontal: 24,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.3)',
     },
     continueButtonText: {
         fontSize: 16,
-        color: 'rgba(255, 255, 255, 0.8)',
-        fontWeight: '500',
+        color: '#ffffff',
+        fontWeight: '600',
+        textShadowColor: 'rgba(0, 0, 0, 0.2)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
     },
 });
 

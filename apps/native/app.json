@@ -18,7 +18,6 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "bundleIdentifier": "com.mobile.app.virtualspeeddate",
-      "buildNumber": "10",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,

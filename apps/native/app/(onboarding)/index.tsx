@@ -23,19 +23,25 @@ import {
     ChevronLeft,
     ChevronRight,
     Camera,
-    Video,
+    Video as VideoIcon,
     MapPin,
     Check,
     Sparkles,
     Trash2,
+    Play,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Video as VideoCompressor } from 'react-native-compressor';
 
 import { useAuth } from '../../hooks/useAuth';
 import { getApiBaseUrl, getAbsoluteMediaUrl } from '../../services/apiConfig';
 import * as authService from '../../services/authService';
+
+// Constants for file validation
+const MAX_VIDEO_SIZE_MB = 500; // Before compression
+const MAX_IMAGE_SIZE_MB = 50;
 
 const STEPS = [
     { id: 'name-dob', title: 'Nice to meet you. What\'s your name?', subtitle: 'This is how you\'ll appear to others' },
@@ -81,6 +87,8 @@ export default function OnboardingScreen() {
     const [photos, setPhotos] = useState<string[]>([]);
     const [videos, setVideos] = useState<{ url: string, thumbnailUrl?: string }[]>([]);
     const [uploadingSlots, setUploadingSlots] = useState<{ [key: string]: boolean }>({});
+    const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+    const [compressionProgress, setCompressionProgress] = useState<{ [key: string]: number }>({});
 
     const step = STEPS[currentStep];
     const progress = (currentStep + 1) / STEPS.length;
@@ -146,50 +154,164 @@ export default function OnboardingScreen() {
         }
     };
 
-    const uploadFile = async (fileUri: string, fileType: 'image' | 'video') => {
-        try {
-            const API_BASE_URL = getApiBaseUrl();
-            const token = await authService.getToken();
-
-            if (!token) {
-                throw new Error('Not authenticated');
+    // Helper: Detect MIME type from file URI
+    const getMimeType = (uri: string, fileType: 'image' | 'video'): string => {
+        const extension = uri.split('.').pop()?.toLowerCase();
+        if (fileType === 'video') {
+            switch (extension) {
+                case 'mov': return 'video/quicktime';
+                case 'mp4': return 'video/mp4';
+                case 'm4v': return 'video/x-m4v';
+                case '3gp': return 'video/3gpp';
+                default: return 'video/mp4';
             }
-
-            // Get file info
-            const fileInfo = await FileSystem.getInfoAsync(fileUri);
-            if (!fileInfo.exists) {
-                throw new Error('File does not exist');
+        } else {
+            switch (extension) {
+                case 'heic': return 'image/heic';
+                case 'heif': return 'image/heif';
+                case 'png': return 'image/png';
+                case 'webp': return 'image/webp';
+                case 'gif': return 'image/gif';
+                case 'jpg':
+                case 'jpeg':
+                default: return 'image/jpeg';
             }
-
-            // Create form data
-            const formData = new FormData();
-            formData.append('file', {
-                uri: fileUri,
-                type: fileType === 'video' ? 'video/mp4' : 'image/jpeg',
-                name: `upload.${fileType === 'video' ? 'mp4' : 'jpg'}`
-            } as any);
-
-            const response = await fetch(`${API_BASE_URL}/auth/upload`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'multipart/form-data',
-                },
-                body: formData,
-            });
-
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({ message: 'Upload failed' }));
-                throw new Error(error.message || 'Upload failed');
-            }
-
-            const result = await response.json();
-            const isVideoUpload = fileType === 'video';
-            return isVideoUpload ? { url: result.url, thumbnailUrl: result.thumbnailUrl } : result.url;
-        } catch (error) {
-            console.error('Upload failed:', error);
-            throw error;
         }
+    };
+
+    // Helper: Get file extension from URI
+    const getFileExtension = (uri: string): string => {
+        const ext = uri.split('.').pop()?.toLowerCase();
+        return ext || 'jpg';
+    };
+
+    // Compress video using react-native-compressor
+    const compressVideo = async (uri: string, slotKey: string): Promise<string> => {
+        try {
+            console.log('🔄 Starting video compression...');
+            const compressedUri = await VideoCompressor.compress(
+                uri,
+                {
+                    compressionMethod: 'auto',
+                    maxSize: 1280, // Max dimension
+                    minimumFileSizeForCompress: 5, // Only compress if > 5MB
+                },
+                (progress) => {
+                    setCompressionProgress(prev => ({ ...prev, [slotKey]: progress }));
+                    console.log(`📊 Compression progress: ${Math.round(progress * 100)}%`);
+                }
+            );
+            console.log('✅ Video compression complete:', compressedUri);
+            return compressedUri;
+        } catch (error) {
+            console.warn('⚠️ Video compression failed, using original:', error);
+            return uri;
+        }
+    };
+
+    // Upload file with progress tracking
+    const uploadFile = async (
+        fileUri: string,
+        fileType: 'image' | 'video',
+        slotKey: string
+    ): Promise<string | { url: string; thumbnailUrl?: string }> => {
+        return new Promise(async (resolve, reject) => {
+            try {
+                const API_BASE_URL = getApiBaseUrl();
+                const token = await authService.getToken();
+
+                if (!token) {
+                    throw new Error('Not authenticated');
+                }
+
+                // Get file info and validate size
+                const fileInfo = await FileSystem.getInfoAsync(fileUri);
+                if (!fileInfo.exists) {
+                    throw new Error('File does not exist');
+                }
+
+                // Note: fileInfo.size may not be available in all cases
+                const fileSizeMB = ((fileInfo as any).size || 0) / (1024 * 1024);
+                const maxSize = fileType === 'video' ? MAX_VIDEO_SIZE_MB : MAX_IMAGE_SIZE_MB;
+
+                if (fileSizeMB > maxSize) {
+                    throw new Error(`File too large (${Math.round(fileSizeMB)}MB). Maximum size is ${maxSize}MB.`);
+                }
+
+                console.log(`📤 Uploading ${fileType}: ${Math.round(fileSizeMB)}MB`);
+
+                // Compress videos before upload
+                let finalUri = fileUri;
+                if (fileType === 'video') {
+                    finalUri = await compressVideo(fileUri, slotKey);
+                }
+
+                // Create FormData
+                const formData = new FormData();
+                const mimeType = getMimeType(finalUri, fileType);
+                const extension = getFileExtension(finalUri);
+
+                formData.append('file', {
+                    uri: finalUri,
+                    type: mimeType,
+                    name: `upload_${Date.now()}.${extension}`
+                } as any);
+
+                // Use XMLHttpRequest for progress tracking
+                const xhr = new XMLHttpRequest();
+
+                xhr.upload.addEventListener('progress', (event) => {
+                    if (event.lengthComputable) {
+                        const progress = event.loaded / event.total;
+                        setUploadProgress(prev => ({ ...prev, [slotKey]: progress }));
+                        console.log(`📊 Upload progress: ${Math.round(progress * 100)}%`);
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const result = JSON.parse(xhr.responseText);
+                            console.log('✅ Upload success:', result);
+                            if (fileType === 'video') {
+                                resolve({ url: result.url, thumbnailUrl: result.thumbnailUrl });
+                            } else {
+                                resolve(result.url);
+                            }
+                        } catch (e) {
+                            reject(new Error('Invalid server response'));
+                        }
+                    } else {
+                        let errorMessage = 'Upload failed';
+                        try {
+                            const error = JSON.parse(xhr.responseText);
+                            errorMessage = error.message || errorMessage;
+                        } catch (e) {
+                            // Use default error message
+                        }
+                        reject(new Error(errorMessage));
+                    }
+                });
+
+                xhr.addEventListener('error', () => {
+                    reject(new Error('Network error during upload'));
+                });
+
+                xhr.addEventListener('timeout', () => {
+                    reject(new Error('Upload timed out. Please try again with a smaller file.'));
+                });
+
+                xhr.open('POST', `${API_BASE_URL}/auth/upload`);
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                // IMPORTANT: Do NOT set Content-Type header - let XHR set it with proper boundary
+                xhr.timeout = 300000; // 5 minute timeout for videos
+                xhr.send(formData);
+
+            } catch (error) {
+                console.error('❌ Upload failed:', error);
+                reject(error);
+            }
+        });
     };
 
     const pickImage = async () => {
@@ -207,7 +329,7 @@ export default function OnboardingScreen() {
 
                 try {
                     // Upload image to server
-                    const uploadedUrl = await uploadFile(result.assets[0].uri, 'image');
+                    const uploadedUrl = await uploadFile(result.assets[0].uri, 'image', slotKey);
                     setPhotos((prev) => [...prev, typeof uploadedUrl === 'string' ? uploadedUrl : (uploadedUrl as any).url]);
                 } catch (uploadError) {
                     console.error('Image upload failed:', uploadError);
@@ -245,7 +367,7 @@ export default function OnboardingScreen() {
                 try {
                     // Upload video to server
                     console.log('📤 Uploading video from:', result.assets[0].uri);
-                    const uploadResult = await uploadFile(result.assets[0].uri, 'video') as { url: string, thumbnailUrl: string };
+                    const uploadResult = await uploadFile(result.assets[0].uri, 'video', slotKey) as { url: string, thumbnailUrl: string };
                     console.log('✅ Video upload success:', uploadResult);
                     setVideos((prev) => [...prev, uploadResult]);
                 } catch (uploadError) {
@@ -456,6 +578,7 @@ export default function OnboardingScreen() {
                             <View style={styles.photosGrid}>
                                 {Array.from({ length: 4 }).map((_, index) => {
                                     const slotKey = `photo-${index}`;
+                                    const upProgress = uploadProgress[slotKey];
                                     return (
                                         <TouchableOpacity
                                             key={slotKey}
@@ -465,7 +588,9 @@ export default function OnboardingScreen() {
                                             {uploadingSlots[slotKey] ? (
                                                 <View style={styles.loadingOverlay}>
                                                     <ActivityIndicator color="#3B82F6" />
-                                                    <Text style={styles.loadingText}>Uploading...</Text>
+                                                    <Text style={styles.loadingText}>
+                                                        {upProgress ? `Uploading: ${Math.round(upProgress * 100)}%` : 'Uploading...'}
+                                                    </Text>
                                                 </View>
                                             ) : photos[index] ? (
                                                 <Image
@@ -476,6 +601,7 @@ export default function OnboardingScreen() {
                                             ) : (
                                                 <View style={styles.iconContainer}>
                                                     <Camera size={24} color="#64748b" />
+                                                    <Text style={styles.uploadHint}>Tap to add photo</Text>
                                                 </View>
                                             )}
                                         </TouchableOpacity>
@@ -489,6 +615,8 @@ export default function OnboardingScreen() {
                             <View style={styles.photosGrid}>
                                 {Array.from({ length: 2 }).map((_, index) => {
                                     const slotKey = `video-${index}`;
+                                    const compProgress = compressionProgress[slotKey];
+                                    const upProgress = uploadProgress[slotKey];
                                     return (
                                         <TouchableOpacity
                                             key={slotKey}
@@ -498,11 +626,31 @@ export default function OnboardingScreen() {
                                             {uploadingSlots[slotKey] ? (
                                                 <View style={styles.loadingOverlay}>
                                                     <ActivityIndicator color="#3B82F6" />
-                                                    <Text style={styles.loadingText}>Trimming & Optimizing...</Text>
+                                                    <Text style={styles.loadingText}>
+                                                        {compProgress && compProgress < 1
+                                                            ? `Compressing: ${Math.round(compProgress * 100)}%`
+                                                            : upProgress
+                                                                ? `Uploading: ${Math.round(upProgress * 100)}%`
+                                                                : 'Processing...'
+                                                        }
+                                                    </Text>
                                                 </View>
                                             ) : videos[index] ? (
-                                                <View style={styles.iconContainer}>
-                                                    <Video size={24} color="#64748b" />
+                                                <View style={styles.videoPreviewContainer}>
+                                                    {videos[index].thumbnailUrl ? (
+                                                        <Image
+                                                            source={{ uri: getAbsoluteMediaUrl(videos[index].thumbnailUrl || '') }}
+                                                            style={styles.media}
+                                                            resizeMode="cover"
+                                                        />
+                                                    ) : (
+                                                        <View style={styles.videoPlaceholder}>
+                                                            <VideoIcon size={32} color="#64748b" />
+                                                        </View>
+                                                    )}
+                                                    <View style={styles.playIconOverlay}>
+                                                        <Play size={24} color="#fff" fill="#fff" />
+                                                    </View>
                                                     <TouchableOpacity
                                                         style={styles.deleteButton}
                                                         onPress={() => deleteVideo(index)}
@@ -512,7 +660,8 @@ export default function OnboardingScreen() {
                                                 </View>
                                             ) : (
                                                 <View style={styles.iconContainer}>
-                                                    <Sparkles size={24} color="#64748b" />
+                                                    <VideoIcon size={24} color="#64748b" />
+                                                    <Text style={styles.uploadHint}>Tap to add video</Text>
                                                 </View>
                                             )}
                                         </TouchableOpacity>
@@ -868,6 +1017,36 @@ const styles = StyleSheet.create({
         height: '100%',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    videoPreviewContainer: {
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+    },
+    videoPlaceholder: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#F0F0F0',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    playIconOverlay: {
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: [{ translateX: -20 }, { translateY: -20 }],
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    uploadHint: {
+        fontSize: 10,
+        color: '#94a3b8',
+        marginTop: 4,
+        textAlign: 'center',
     },
     videoText: {
         fontSize: 10,

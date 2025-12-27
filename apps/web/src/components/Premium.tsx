@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { ChevronLeft, Crown, Zap, Sparkles, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, Crown, Zap, Sparkles, ShieldCheck, Heart } from 'lucide-react';
 import { authService } from '../services/authService';
 import './Premium.css';
 
@@ -36,107 +35,89 @@ export const Premium: React.FC<PremiumProps> = ({ onBack, onUpgradeSuccess }) =>
 
     const benefits = [
         {
-            icon: <Sparkles className="benefit-icon" />,
+            icon: <Heart className="benefit-icon" />,
             title: "See Who Liked You",
-            description: "Unblur all profiles in your 'Liked You' tab and start matching instantly."
+            description: "Discover profiles that have already shown interest in you and connect instantly."
         },
         {
             icon: <Zap className="benefit-icon" />,
             title: "Unlimited Likes",
-            description: "Swipe to your heart's content without any daily limits."
+            description: "Express yourself freely without worrying about daily limits."
         },
         {
-            icon: <ShieldCheck className="benefit-icon" />,
+            icon: <Sparkles className="benefit-icon" />,
             title: "Priority Discovery",
-            description: "Your profile gets seen by more people in the feed."
+            description: "Get seen by more people and increase your chances of meaningful connections."
         },
         {
             icon: <Crown className="benefit-icon" />,
             title: "Premium Badge",
-            description: "Stand out with a distinctive crown on your profile."
+            description: "Stand out with a distinctive badge that shows your commitment to finding real connections."
         }
     ];
 
     return (
-        <motion.div
-            className="premium-page"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-        >
+        <div className="premium-page">
             <header className="premium-header">
                 <button className="back-btn" onClick={onBack}>
                     <ChevronLeft size={20} />
                 </button>
-                <div className="premium-title">Slush Premium</div>
+                <div className="premium-title">Premium</div>
             </header>
 
             <main className="premium-content">
                 <div className="premium-hero">
-                    <div className="crown-container">
-                        <motion.div
-                            animate={{
-                                scale: [1, 1.05, 1],
-                                rotate: [0, 3, -3, 0]
-                            }}
-                            transition={{
-                                duration: 5,
-                                repeat: Infinity,
-                                ease: "easeInOut"
-                            }}
-                        >
-                            <Crown size={72} className="large-crown" />
-                        </motion.div>
-                        <div className="glow-effect" />
+                    <div className="hero-icon">
+                        <Crown size={48} className="hero-crown" />
                     </div>
-                    <h1>Unlock Slush Silver</h1>
-                    <p className="hero-subtitle">Make every connection count with our premium features designed to help you find your spark.</p>
+                    <h1>Unlock Premium</h1>
+                    <p className="hero-subtitle">Take your dating experience to the next level with features designed to help you find genuine connections.</p>
                 </div>
 
-                <div className="benefits-list">
-                    {benefits.map((benefit, index) => (
-                        <motion.div
-                            key={index}
-                            className="benefit-card"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.1 * index }}
-                        >
-                            <div className="benefit-icon-wrapper">
-                                {benefit.icon}
+                <div className="benefits-section">
+                    <h2 className="benefits-title">What you'll get</h2>
+                    <div className="benefits-list">
+                        {benefits.map((benefit, index) => (
+                            <div key={index} className="benefit-card">
+                                <div className="benefit-icon-wrapper">
+                                    {benefit.icon}
+                                </div>
+                                <div className="benefit-text">
+                                    <h3>{benefit.title}</h3>
+                                    <p>{benefit.description}</p>
+                                </div>
                             </div>
-                            <div className="benefit-text">
-                                <h3>{benefit.title}</h3>
-                                <p>{benefit.description}</p>
-                            </div>
-                        </motion.div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
 
                 {error && <div className="premium-error">{error}</div>}
             </main>
 
             <footer className="premium-footer">
-                <div className="premium-price">
-                    <span className="price-amount">£0.00</span>
-                    <span className="price-period">/ month</span>
+                <div className="pricing-section">
+                    <div className="price-display">
+                        <span className="price-amount">£0.00</span>
+                        <span className="price-period">per month</span>
+                    </div>
+                    <p className="pricing-note">Free for now • No payment required</p>
                 </div>
+
                 <button
                     className={`upgrade-btn ${isUpgrading ? 'loading' : ''}`}
                     onClick={handleUpgrade}
                     disabled={isUpgrading}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <div className="upgrade-btn-content">
                         {isUpgrading ? 'Processing...' : (
                             <>
                                 <Crown size={20} />
-                                Upgrade to Slush Premium
+                                Upgrade to Premium
                             </>
                         )}
                     </div>
                 </button>
-                <p className="footer-note">Experience the best of Slush. No real payment required.</p>
             </footer>
-        </motion.div>
+        </div>
     );
 };

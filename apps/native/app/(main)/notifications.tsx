@@ -115,6 +115,7 @@ export default function NotificationsScreen() {
                 <Image
                     source={{ uri: getAbsoluteMediaUrl(notification.userImage) }}
                     style={styles.avatar}
+                    blurRadius={notification.type === 'like' && !user?.isPremium ? 17 : 0}
                 />
             );
         }

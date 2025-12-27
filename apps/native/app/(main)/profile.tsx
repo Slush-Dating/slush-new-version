@@ -3,7 +3,7 @@
  * View and edit user profile
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     View,
     Text,
@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { Video, ResizeMode } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -27,9 +28,6 @@ import {
     Crown,
     LogOut,
     ChevronRight,
-    Shield,
-    Bell,
-    HelpCircle,
     Play,
     ArrowLeft,
     Clock,
@@ -39,6 +37,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useBackNavigation } from '../../hooks/useBackNavigation';
 import { getAbsoluteMediaUrl } from '../../services/apiConfig';
+import { colors, shadows } from '../../constants/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HEADER_HEIGHT = SCREEN_HEIGHT * 0.5;
@@ -222,7 +221,7 @@ export default function ProfileScreen() {
                             }}
                             style={styles.circleButton}
                         >
-                            <Edit3 size={20} color="#000000" />
+                            <Settings size={20} color="#000000" />
                         </TouchableOpacity>
                     </SafeAreaView>
                 </View>
@@ -231,10 +230,21 @@ export default function ProfileScreen() {
                 <View style={styles.contentCard}>
                     {/* Name, Age and Profession */}
                     <View style={styles.nameSection}>
-                        <Text style={styles.name}>
-                            {user?.name || 'Add name'}
-                            {age && <Text style={styles.age}>, {age}</Text>}
-                        </Text>
+                        <View style={styles.nameRow}>
+                            <Text style={styles.name}>
+                                {user?.name || 'Add name'}
+                                {age && <Text style={styles.age}>, {age}</Text>}
+                            </Text>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    // Add edit profile functionality here
+                                }}
+                                style={styles.editIconButton}
+                            >
+                                <Edit3 size={20} color="#666666" />
+                            </TouchableOpacity>
+                        </View>
                         <Text style={styles.profession}>
                             {(user as any)?.profession || 'Professional model'}
                         </Text>
@@ -308,40 +318,30 @@ export default function ProfileScreen() {
                     </View>
 
                     {/* Video */}
-                    <View style={styles.videoSection}>
-                        <Text style={styles.sectionTitle}>Video</Text>
-                        <View style={styles.customGrid}>
-                            <View style={styles.gridLarge}>
-                                <Image
-                                    source={{ uri: photos[0] ? getAbsoluteMediaUrl(photos[0]) : 'https://via.placeholder.com/300' }}
-                                    style={styles.gridImage}
-                                />
-                                <View style={styles.playOverlay}>
-                                    <Play size={32} color="#ffffff" fill="#ffffff" />
-                                </View>
-                            </View>
-                            <View style={styles.gridSmallColumn}>
-                                <View style={styles.smallVideoItem}>
-                                    <Image
-                                        source={{ uri: photos[1] ? getAbsoluteMediaUrl(photos[1]) : 'https://via.placeholder.com/150' }}
-                                        style={styles.gridImage}
-                                    />
-                                    <View style={styles.playOverlaySmall}>
-                                        <Play size={16} color="#ffffff" fill="#ffffff" />
+                    {videos.length > 0 && (
+                        <View style={styles.videoSection}>
+                            <Text style={styles.sectionTitle}>Video</Text>
+                            <View style={styles.videoGrid}>
+                                {videos.slice(0, 3).map((video, index) => (
+                                    <View key={index} style={styles.videoGridItem}>
+                                        <View style={styles.videoContainer}>
+                                            <Video
+                                                source={{ uri: getAbsoluteMediaUrl(video) }}
+                                                style={styles.videoThumbnail}
+                                                resizeMode={ResizeMode.COVER}
+                                                shouldPlay={false}
+                                                isLooping
+                                                isMuted
+                                            />
+                                        </View>
+                                        <View style={styles.playOverlay}>
+                                            <Play size={24} color="#ffffff" fill="#ffffff" />
+                                        </View>
                                     </View>
-                                </View>
-                                <View style={styles.smallVideoItem}>
-                                    <Image
-                                        source={{ uri: photos[2] ? getAbsoluteMediaUrl(photos[2]) : 'https://via.placeholder.com/150' }}
-                                        style={styles.gridImage}
-                                    />
-                                    <View style={styles.playOverlaySmall}>
-                                        <Play size={16} color="#ffffff" fill="#ffffff" />
-                                    </View>
-                                </View>
+                                ))}
                             </View>
                         </View>
-                    </View>
+                    )}
                 </View>
 
                 {/* Premium Card */}
@@ -368,27 +368,6 @@ export default function ProfileScreen() {
                     </TouchableOpacity>
                 )}
 
-                {/* Menu Items */}
-                <View style={styles.menuSection}>
-                    <MenuItem
-                        icon={<Bell size={20} color="#94a3b8" />}
-                        title="Notifications"
-                        onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            router.push('/(main)/notifications');
-                        }}
-                    />
-                    <MenuItem
-                        icon={<Shield size={20} color="#94a3b8" />}
-                        title="Privacy & Safety"
-                        onPress={() => { }}
-                    />
-                    <MenuItem
-                        icon={<HelpCircle size={20} color="#94a3b8" />}
-                        title="Help & Support"
-                        onPress={() => { }}
-                    />
-                </View>
 
                 {/* Logout */}
                 <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -510,11 +489,20 @@ const styles = StyleSheet.create({
     nameSection: {
         marginBottom: 24,
     },
+    nameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
     name: {
         fontSize: 26,
         fontWeight: 'bold',
         color: '#000000',
-        marginBottom: 4,
+    },
+    editIconButton: {
+        padding: 8,
+        marginLeft: 8,
     },
     age: {
         fontWeight: 'normal',
@@ -595,35 +583,56 @@ const styles = StyleSheet.create({
     },
     customGrid: {
         flexDirection: 'row',
-        height: 240,
+        height: 200,
         marginTop: 12,
-        gap: 12,
+        gap: 8,
     },
     gridLarge: {
         flex: 2,
-        borderRadius: 20,
+        borderRadius: 16,
         overflow: 'hidden',
         position: 'relative',
+        ...shadows.sm,
     },
     gridSmallColumn: {
         flex: 1,
         flexDirection: 'column',
-        gap: 12,
+        gap: 8,
     },
     gridImage: {
         width: '100%',
         height: '100%',
-        backgroundColor: '#F3F4F6',
-        borderRadius: 20,
+        backgroundColor: colors.bgSecondary,
+        borderRadius: 16,
+        ...shadows.sm,
     },
     videoSection: {
         marginBottom: 40,
     },
-    smallVideoItem: {
-        flex: 1,
-        borderRadius: 20,
+    videoGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginTop: 12,
+        gap: 8,
+    },
+    videoGridItem: {
+        width: (SCREEN_WIDTH - 48 - 8) / 2, // Screen width minus horizontal padding (24*2) minus gap (8) divided by 2 columns
+        aspectRatio: 1,
+        borderRadius: 16,
         overflow: 'hidden',
         position: 'relative',
+    },
+    videoContainer: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 16,
+        overflow: 'hidden',
+        ...shadows.sm,
+    },
+    videoThumbnail: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: colors.bgSecondary,
     },
     playOverlay: {
         position: 'absolute',
@@ -634,16 +643,8 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    },
-    playOverlaySmall: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        borderRadius: 16,
+        zIndex: 1,
     },
     premiumCard: {
         marginHorizontal: 24,

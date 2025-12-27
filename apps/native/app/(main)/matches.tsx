@@ -222,7 +222,8 @@ export default function MatchesScreen() {
             <View style={styles.cardImageContainer}>
                 <Image
                     source={{ uri: item.imageUrl ? getAbsoluteMediaUrl(item.imageUrl) : 'https://via.placeholder.com/200' }}
-                    style={[styles.cardImage, !user?.isPremium && styles.blurredImage]}
+                    style={styles.cardImage}
+                    blurRadius={!user?.isPremium ? 15 : 0}
                 />
                 {user?.isPremium ? (
                     <>
@@ -490,9 +491,6 @@ const styles = StyleSheet.create({
     cardImage: {
         width: '100%',
         height: '100%',
-    },
-    blurredImage: {
-        opacity: 0.8,
     },
     cardGradient: {
         ...StyleSheet.absoluteFillObject,

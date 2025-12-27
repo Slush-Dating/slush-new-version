@@ -573,9 +573,12 @@ router.get('/profile/:userId', async (req, res) => {
  *         description: Unauthorized
  */
 router.post('/upload', (req, res) => {
+    console.log('[Upload] Received upload request');
+
     // Verify authentication
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.warn('[Upload] Auth header missing or malformed');
         return res.status(401).json({ message: 'Authorization header missing or malformed' });
     }
 
@@ -583,12 +586,14 @@ router.post('/upload', (req, res) => {
     try {
         jwt.verify(token, JWT_SECRET);
     } catch (err) {
+        console.warn('[Upload] Invalid token');
         return res.status(401).json({ message: 'Invalid or expired token' });
     }
 
     // Handle file upload with proper error handling
     upload.single('file')(req, res, async (err) => {
         if (err) {
+            console.error('[Upload] Multer error:', err.message);
             // Handle multer errors
             if (err instanceof multer.MulterError) {
                 if (err.code === 'LIMIT_FILE_SIZE') {
@@ -601,8 +606,19 @@ router.post('/upload', (req, res) => {
         }
 
         if (!req.file) {
-            return res.status(400).json({ message: 'No file uploaded' });
+            console.error('[Upload] No file in request. Content-Type:', req.headers['content-type']);
+            return res.status(400).json({
+                message: 'No file uploaded',
+                hint: 'Ensure Content-Type is multipart/form-data with correct boundary. Do not manually set the Content-Type header when using FormData.'
+            });
         }
+
+        console.log('[Upload] File received:', {
+            filename: req.file.filename,
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: `${Math.round(req.file.size / 1024 / 1024)}MB`
+        });
 
         const filePath = req.file.path;
         const mimeType = req.file.mimetype;

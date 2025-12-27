@@ -31,21 +31,12 @@ import {
     Dumbbell,
     Coffee,
     BarChart,
-    HelpCircle,
-    X,
-    ChevronRight,
-    ChevronLeft,
-    BookOpen,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
-import { eventService, notificationService, type EventData } from '../../../services/api';
+import { eventService, type EventData } from '../../../services/api';
 import { getAbsoluteMediaUrl } from '../../../services/apiConfig';
 import { useAuth } from '../../../hooks/useAuth';
-import { colors, spacing, radius, typography, shadows } from '../../../constants/theme';
-import { Modal, Dimensions } from 'react-native';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const categories = [
     { id: 'music', label: 'Music', icon: Music },
@@ -66,10 +57,6 @@ export default function EventsScreen() {
     const [bookedEventIds, setBookedEventIds] = useState<Set<string>>(new Set());
     const [timeUntilEvent, setTimeUntilEvent] = useState<number>(0);
     const [canJoin, setCanJoin] = useState(false);
-    const [notificationCount, setNotificationCount] = useState(0);
-    const [showGuideModal, setShowGuideModal] = useState(false);
-    const [currentGuideStep, setCurrentGuideStep] = useState(1);
-    const [activeTab, setActiveTab] = useState<'guide' | 'faq'>('guide');
 
     // Fetch events and bookings together to ensure synchronization
     const fetchEventsAndBookings = useCallback(async () => {
@@ -89,17 +76,17 @@ export default function EventsScreen() {
             console.log('📋 Received events:', allEvents.length);
             console.log('📅 Received bookings:', bookings.length);
             console.log('📅 Bookings data:', JSON.stringify(bookings, null, 2));
-
+            
             // If bookings array is empty but we have events, try checking booking status for each event
             // This is a fallback in case the bookings endpoint isn't working but individual status checks work
             if (bookings.length === 0 && allEvents.length > 0) {
                 console.log('📅 No bookings from API, checking individual event booking statuses...');
                 const bookingChecks = await Promise.allSettled(
-                    allEvents.slice(0, 5).map(event =>
+                    allEvents.slice(0, 5).map(event => 
                         event._id ? eventService.getBookingStatus(event._id) : Promise.resolve({ isBooked: false, booking: null })
                     )
                 );
-
+                
                 const bookedEventIds = new Set<string>();
                 bookingChecks.forEach((result, index) => {
                     if (result.status === 'fulfilled' && result.value.isBooked && allEvents[index]?._id) {
@@ -107,7 +94,7 @@ export default function EventsScreen() {
                         console.log('📅 Found booked event via status check:', allEvents[index].name, allEvents[index]._id);
                     }
                 });
-
+                
                 if (bookedEventIds.size > 0) {
                     console.log('📅 Found', bookedEventIds.size, 'booked events via status checks');
                     // Create mock bookings from the events
@@ -255,7 +242,7 @@ export default function EventsScreen() {
                     }
                     return isBooked;
                 })
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                 if (upcomingBookedEvents.length > 0) {
                     const mostUpcoming = upcomingBookedEvents[0];
@@ -329,7 +316,7 @@ export default function EventsScreen() {
 
             // Update events list and find booked event for countdown
             const now = new Date();
-
+            
             setEvents((currentEvents) => {
                 const eventsMap = new Map<string, EventData>();
 
@@ -409,17 +396,6 @@ export default function EventsScreen() {
             // Refresh both events and bookings when screen comes into focus
             // This ensures bookedEvent and countdown are properly restored
             fetchEventsAndBookings();
-
-            // Fetch notification count
-            const fetchNotificationCount = async () => {
-                try {
-                    const { unreadCount } = await notificationService.getUnreadCount();
-                    setNotificationCount(unreadCount || 0);
-                } catch (error) {
-                    console.warn('Failed to fetch notification count:', error);
-                }
-            };
-            fetchNotificationCount();
         }, [fetchEventsAndBookings])
     );
 
@@ -537,76 +513,6 @@ export default function EventsScreen() {
         ? getAbsoluteMediaUrl(user.photos[0])
         : 'https://via.placeholder.com/50';
 
-    const handleEventGuide = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        setCurrentGuideStep(1);
-        setActiveTab('guide');
-        setShowGuideModal(true);
-    };
-
-    const handleCloseGuide = () => {
-        setShowGuideModal(false);
-        setCurrentGuideStep(1);
-    };
-
-    const handleNextStep = () => {
-        if (currentGuideStep < 3) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setCurrentGuideStep(currentGuideStep + 1);
-        }
-    };
-
-    const handlePreviousStep = () => {
-        if (currentGuideStep > 1) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setCurrentGuideStep(currentGuideStep - 1);
-        }
-    };
-
-    const guideSteps = [
-        {
-            step: 1,
-            title: 'Video Dates',
-            description: 'You will go on a series of video-dates that will last 3 minutes each.',
-            image: require('../../../assets/event-guide-1.png'),
-        },
-        {
-            step: 2,
-            title: 'Like or Dislike',
-            description: 'After your video-date, you will need to decide whether you like or dislike your date.',
-            image: require('../../../assets/event-guide-2.png'),
-        },
-        {
-            step: 3,
-            title: 'Match & Chat',
-            description: 'At the end of the event, match and chat.',
-            image: require('../../../assets/event-guide-3.png'),
-        },
-    ];
-
-    const faqItems = [
-        {
-            question: 'How do I join an event?',
-            answer: 'Book an event from the list. 15 minutes before it starts, a "Join" button will appear on your dashboard. Tap it to enter the waiting room.'
-        },
-        {
-            question: 'What if I am late?',
-            answer: 'You can join up to 10 minutes after the event has started, but you might miss some dates!'
-        },
-        {
-            question: 'Can I leave early?',
-            answer: 'Yes, you can leave at any time. However, to get matches, we recommend staying until the end.'
-        },
-        {
-            question: 'How are matches made?',
-            answer: 'If you and another participant both "Like" each other after your video date, you\'ll find them in your matches screen after the event.'
-        },
-        {
-            question: 'Is my video recorded?',
-            answer: 'No, video dates are live and never recorded. We value your privacy.'
-        }
-    ];
-
     if (isLoading) {
         return (
             <View style={styles.loadingContainer}>
@@ -672,29 +578,15 @@ export default function EventsScreen() {
                     <View style={styles.profileActions}>
                         <TouchableOpacity
                             style={styles.actionButton}
-                            onPress={() => {
-                                // Mark notifications as read and clear count
-                                setNotificationCount(0);
-                                notificationService.markAllAsRead().catch(err => {
-                                    console.warn('Failed to mark notifications as read:', err);
-                                });
-                                router.push('/(main)/notifications');
-                            }}
+                            onPress={() => router.push('/(main)/chat')}
                         >
-                            <Bell size={20} color="#1A202C" />
-                            {notificationCount > 0 && (
-                                <View style={styles.notificationBadge}>
-                                    <Text style={styles.notificationBadgeText}>
-                                        {notificationCount > 99 ? '99+' : notificationCount}
-                                    </Text>
-                                </View>
-                            )}
+                            <MessageSquare size={20} color="#1A202C" />
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={styles.actionButton}
-                            onPress={handleEventGuide}
+                            onPress={() => router.push('/(main)/notifications')}
                         >
-                            <HelpCircle size={20} color="#1A202C" />
+                            <Bell size={20} color="#1A202C" />
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.actionButton, styles.testButton]}
@@ -888,156 +780,6 @@ export default function EventsScreen() {
                     )}
                 </View>
             </ScrollView>
-
-            {/* Event Guide & FAQ Modal */}
-            <Modal
-                visible={showGuideModal}
-                animationType="fade"
-                transparent={true}
-                onRequestClose={handleCloseGuide}
-            >
-                <View style={styles.guideModalBackdrop}>
-                    <TouchableOpacity
-                        style={styles.guideModalBackdropTouchable}
-                        activeOpacity={1}
-                        onPress={handleCloseGuide}
-                    />
-                    <View style={styles.guideModalContainer}>
-                        {/* Header */}
-                        <View style={styles.guideModalHeader}>
-                            <Text style={styles.guideModalTitle}>Event Information</Text>
-                            <TouchableOpacity
-                                onPress={handleCloseGuide}
-                                style={styles.guideCloseButton}
-                                activeOpacity={0.8}
-                            >
-                                <X size={20} color={colors.textPrimary} />
-                            </TouchableOpacity>
-                        </View>
-
-                        {/* Tabs */}
-                        <View style={styles.modalTabs}>
-                            <TouchableOpacity
-                                style={[styles.modalTab, activeTab === 'guide' && styles.modalTabActive]}
-                                onPress={() => setActiveTab('guide')}
-                            >
-                                <Text style={[styles.modalTabText, activeTab === 'guide' && styles.modalTabTextActive]}>Guide</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.modalTab, activeTab === 'faq' && styles.modalTabActive]}
-                                onPress={() => setActiveTab('faq')}
-                            >
-                                <Text style={[styles.modalTabText, activeTab === 'faq' && styles.modalTabTextActive]}>FAQ</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        {activeTab === 'guide' ? (
-                            <>
-                                {/* Step Indicator */}
-                                <View style={styles.stepIndicator}>
-                                    {guideSteps.map((step) => (
-                                        <View
-                                            key={step.step}
-                                            style={[
-                                                styles.stepDot,
-                                                currentGuideStep === step.step && styles.stepDotActive,
-                                            ]}
-                                        />
-                                    ))}
-                                </View>
-
-                                {/* Step Content */}
-                                <ScrollView
-                                    style={styles.guideContent}
-                                    contentContainerStyle={styles.guideContentContainer}
-                                    showsVerticalScrollIndicator={false}
-                                >
-                                    {guideSteps.map((step) => {
-                                        if (step.step !== currentGuideStep) return null;
-
-                                        return (
-                                            <View key={step.step} style={styles.stepContent}>
-                                                <Text style={styles.stepTitle}>{step.title}</Text>
-                                                {/* Step Image */}
-                                                <View style={styles.stepImageContainer}>
-                                                    <Image
-                                                        source={step.image}
-                                                        style={styles.stepImage}
-                                                        resizeMode="contain"
-                                                    />
-                                                </View>
-
-                                                {/* Step Description */}
-                                                <Text style={styles.stepDescription}>{step.description}</Text>
-                                            </View>
-                                        );
-                                    })}
-                                </ScrollView>
-
-                                {/* Navigation Buttons */}
-                                <View style={styles.guideNavigation}>
-                                    {currentGuideStep < 3 ? (
-                                        <>
-                                            <TouchableOpacity
-                                                onPress={handlePreviousStep}
-                                                disabled={currentGuideStep === 1}
-                                                style={[
-                                                    styles.navButton,
-                                                    styles.navButtonLeft,
-                                                    currentGuideStep === 1 && styles.navButtonDisabled,
-                                                ]}
-                                                activeOpacity={0.8}
-                                            >
-                                                <ChevronLeft
-                                                    size={18}
-                                                    color={currentGuideStep === 1 ? colors.textTertiary : colors.primary}
-                                                />
-                                                <Text
-                                                    style={[
-                                                        styles.navButtonText,
-                                                        currentGuideStep === 1 && styles.navButtonTextDisabled,
-                                                    ]}
-                                                >
-                                                    Previous
-                                                </Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                                onPress={handleNextStep}
-                                                style={[styles.navButton, styles.navButtonRight]}
-                                                activeOpacity={0.8}
-                                            >
-                                                <Text style={styles.navButtonTextRight}>Next</Text>
-                                                <ChevronRight size={18} color={colors.bgWhite} />
-                                            </TouchableOpacity>
-                                        </>
-                                    ) : (
-                                        <TouchableOpacity
-                                            onPress={handleCloseGuide}
-                                            style={styles.navButtonDone}
-                                            activeOpacity={0.8}
-                                        >
-                                            <Text style={styles.navButtonTextDone}>Got it!</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
-                            </>
-                        ) : (
-                            <ScrollView
-                                style={styles.faqContent}
-                                contentContainerStyle={styles.faqContentContainer}
-                                showsVerticalScrollIndicator={false}
-                            >
-                                {faqItems.map((item, index) => (
-                                    <View key={index} style={styles.faqItem}>
-                                        <Text style={styles.faqQuestion}>{item.question}</Text>
-                                        <Text style={styles.faqAnswer}>{item.answer}</Text>
-                                    </View>
-                                ))}
-                            </ScrollView>
-                        )}
-                    </View>
-                </View>
-            </Modal>
         </SafeAreaView>
     );
 }
@@ -1441,202 +1183,5 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontWeight: '700',
         color: '#FFFFFF',
-    },
-    notificationBadge: {
-        position: 'absolute',
-        top: -4,
-        right: -4,
-        minWidth: 18,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: '#EF4444',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 4,
-    },
-    notificationBadgeText: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: '#FFFFFF',
-    },
-    // Guide Modal Styles
-    guideModalBackdrop: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    guideModalBackdropTouchable: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    guideModalContainer: {
-        width: SCREEN_WIDTH * 0.9,
-        maxHeight: '80%',
-        backgroundColor: colors.bgWhite,
-        borderRadius: radius.xl,
-        padding: spacing.xl,
-        ...shadows.lg,
-    },
-    guideModalHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: spacing.lg,
-    },
-    guideModalTitle: {
-        fontSize: typography.sizes.xl,
-        fontWeight: typography.weights.bold,
-        color: colors.textPrimary,
-    },
-    guideCloseButton: {
-        padding: spacing.xs,
-    },
-    modalTabs: {
-        flexDirection: 'row',
-        marginBottom: spacing.lg,
-        backgroundColor: colors.bgSecondary,
-        borderRadius: radius.md,
-        padding: 4,
-    },
-    modalTab: {
-        flex: 1,
-        paddingVertical: 8,
-        alignItems: 'center',
-        borderRadius: radius.sm,
-    },
-    modalTabActive: {
-        backgroundColor: colors.bgWhite,
-        ...shadows.sm,
-    },
-    modalTabText: {
-        fontSize: typography.sizes.sm,
-        fontWeight: typography.weights.medium,
-        color: colors.textTertiary,
-    },
-    modalTabTextActive: {
-        color: colors.primary,
-        fontWeight: typography.weights.bold,
-    },
-    stepIndicator: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: spacing.sm,
-        marginBottom: spacing.xl,
-    },
-    stepDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: colors.bgSecondary,
-    },
-    stepDotActive: {
-        backgroundColor: colors.primary,
-        width: 20,
-    },
-    guideContent: {
-        maxHeight: 350,
-    },
-    guideContentContainer: {
-        alignItems: 'center',
-    },
-    stepContent: {
-        alignItems: 'center',
-        width: '100%',
-    },
-    stepTitle: {
-        fontSize: typography.sizes.lg,
-        fontWeight: typography.weights.bold,
-        color: colors.textPrimary,
-        marginBottom: spacing.md,
-    },
-    stepImageContainer: {
-        width: '100%',
-        height: 200,
-        backgroundColor: colors.bgSecondary,
-        borderRadius: radius.lg,
-        marginBottom: spacing.xl,
-        justifyContent: 'center',
-        alignItems: 'center',
-        overflow: 'hidden',
-    },
-    stepImage: {
-        width: '100%',
-        height: '100%',
-    },
-    stepDescription: {
-        fontSize: typography.sizes.md,
-        color: colors.textSecondary,
-        textAlign: 'center',
-        lineHeight: 22,
-        paddingHorizontal: spacing.md,
-    },
-    guideNavigation: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: spacing.xl,
-        gap: spacing.md,
-    },
-    navButton: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing.md,
-        borderRadius: radius.lg,
-        gap: spacing.xs,
-    },
-    navButtonLeft: {
-        backgroundColor: colors.bgSecondary,
-    },
-    navButtonRight: {
-        backgroundColor: colors.primary,
-    },
-    navButtonDisabled: {
-        opacity: 0.5,
-    },
-    navButtonText: {
-        fontSize: typography.sizes.md,
-        fontWeight: typography.weights.semibold,
-        color: colors.primary,
-    },
-    navButtonTextDisabled: {
-        color: colors.textTertiary,
-    },
-    navButtonTextRight: {
-        fontSize: typography.sizes.md,
-        fontWeight: typography.weights.semibold,
-        color: colors.bgWhite,
-    },
-    navButtonDone: {
-        flex: 1,
-        backgroundColor: colors.primary,
-        paddingVertical: spacing.md,
-        borderRadius: radius.lg,
-        alignItems: 'center',
-    },
-    navButtonTextDone: {
-        fontSize: typography.sizes.md,
-        fontWeight: typography.weights.bold,
-        color: colors.bgWhite,
-    },
-    faqContent: {
-        maxHeight: 450,
-    },
-    faqContentContainer: {
-        paddingBottom: spacing.lg,
-    },
-    faqItem: {
-        marginBottom: spacing.xl,
-    },
-    faqQuestion: {
-        fontSize: typography.sizes.md,
-        fontWeight: typography.weights.bold,
-        color: colors.textPrimary,
-        marginBottom: spacing.xs,
-    },
-    faqAnswer: {
-        fontSize: typography.sizes.sm,
-        color: colors.textSecondary,
-        lineHeight: 20,
     },
 });

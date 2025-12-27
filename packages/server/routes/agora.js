@@ -166,8 +166,6 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
     try {
         const { eventId } = req.params;
         const userId = req.userId;
-        // Accept pairedPartnerIds from request body to avoid duplicate dates
-        const { pairedPartnerIds = [] } = req.body;
 
         // Get event
         const event = await Event.findById(eventId);
@@ -228,25 +226,12 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
             genderFilter = { gender: 'woman' };
         }
 
-        // Build exclusion list: current user + already paired partners
-        const excludeIds = [
-            new mongoose.Types.ObjectId(userId),
-            ...pairedPartnerIds.map(id => {
-                try {
-                    return new mongoose.Types.ObjectId(id);
-                } catch (e) {
-                    return null;
-                }
-            }).filter(Boolean)
-        ];
-
         // Find potential partners
         // Always exclude admin users (admin users are for backend panel only)
-        // Also exclude already-paired partners to avoid duplicate dates
         const query = {
             _id: {
                 $in: allParticipants.map(id => new mongoose.Types.ObjectId(id)),
-                $nin: excludeIds
+                $ne: new mongoose.Types.ObjectId(userId)
             },
             onboardingCompleted: true,
             isAdmin: { $ne: true },
@@ -261,15 +246,6 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
             .lean();
 
         if (potentialPartners.length === 0) {
-            // Check if all partners have been dated
-            const totalExcluded = pairedPartnerIds.length;
-            if (totalExcluded > 0) {
-                return res.status(404).json({
-                    message: 'You have met everyone available! Great job!',
-                    allPartnersExhausted: true,
-                    totalDated: totalExcluded
-                });
-            }
             return res.status(404).json({ message: 'No matching partners found' });
         }
 
@@ -296,15 +272,12 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
             };
         });
 
-        // Return a random partner from available pool
+        // Return a random partner (in production, you'd implement round-robin or matching algorithm)
         const randomPartner = partnersWithAge[Math.floor(Math.random() * partnersWithAge.length)];
-
-        console.log(`[Agora API] User ${userId} matched with ${randomPartner.userId}. Excluded ${pairedPartnerIds.length} previous partners. ${partnersWithAge.length} available.`);
 
         res.json({
             partner: randomPartner,
-            totalAvailable: partnersWithAge.length,
-            totalExcluded: pairedPartnerIds.length
+            totalAvailable: partnersWithAge.length
         });
     } catch (error) {
         console.error('Error getting next partner:', error);

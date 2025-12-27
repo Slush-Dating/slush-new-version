@@ -99,30 +99,10 @@ export default function ProfileScreen() {
             <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                 {/* Header Image Section */}
                 <View style={styles.headerImageContainer}>
-                    <ScrollView
-                        horizontal
-                        pagingEnabled
-                        showsHorizontalScrollIndicator={false}
-                        onMomentumScrollEnd={(e) => {
-                            const newIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-                            setCurrentImageIndex(newIndex);
-                        }}
-                        bounces={false}
-                    >
-                        {photos.map((photo, index) => (
-                            <Image
-                                key={index}
-                                source={{ uri: getAbsoluteMediaUrl(photo) }}
-                                style={styles.headerImage}
-                            />
-                        ))}
-                        {photos.length === 0 && (
-                            <Image
-                                source={{ uri: profileImage }}
-                                style={styles.headerImage}
-                            />
-                        )}
-                    </ScrollView>
+                    <Image
+                        source={{ uri: getAbsoluteMediaUrl(currentImage) }}
+                        style={styles.headerImage}
+                    />
 
                     {/* Navigation Dots */}
                     {photos.length > 1 && (

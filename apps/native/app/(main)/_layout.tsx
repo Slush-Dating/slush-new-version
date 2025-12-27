@@ -3,14 +3,14 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import { PlayCircle, Calendar, Heart, MessageSquare, User } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
 import { useAuth } from '../../hooks/useAuth';
-import { chatService, notificationService } from '../../services/api';
+import { chatService } from '../../services/api';
 import socketService from '../../services/socketService';
 import { getCurrentUserId } from '../../services/authService';
 
@@ -46,12 +46,12 @@ export default function MainLayout() {
                 apiErrorCountRef.current = 0; // Reset error count on success
                 isCircuitOpenRef.current = false; // Reset circuit breaker
                 lastFetchTimeRef.current = Date.now();
-
+                
                 // Only log success occasionally to reduce spam
                 if (!isRetry) {
                     console.log('✅ Fetched unread count:', count);
                 }
-            } catch (error: any) {
+            } catch (error) {
                 const errorMessage = error.message || '';
                 lastFetchTimeRef.current = Date.now();
                 apiErrorCountRef.current += 1;
@@ -98,29 +98,6 @@ export default function MainLayout() {
         return () => clearInterval(intervalId);
     }, [user]);
 
-    // Fetch unread match count for the Hearts tab badge
-    useEffect(() => {
-        if (!user) return;
-
-        const fetchMatchCount = async () => {
-            try {
-                const { unreadCount: count } = await notificationService.getUnreadCount('match');
-                setNewMatchCount(count || 0);
-            } catch (error) {
-                console.warn('⚠️ Match notification API unavailable');
-                setNewMatchCount(0);
-            }
-        };
-
-        // Initial fetch
-        fetchMatchCount();
-
-        // Periodic refresh every 45 seconds (slightly slower than chat)
-        const intervalId = setInterval(fetchMatchCount, 45000);
-
-        return () => clearInterval(intervalId);
-    }, [user]);
-
     // Set up socket connection for real-time updates
     useEffect(() => {
         const setupSocket = async () => {
@@ -130,17 +107,10 @@ export default function MainLayout() {
             try {
                 await socketService.connect(userId);
 
-                socketService.onNewMessage(async (message) => {
-                    // Only increment unread count if message is from another user
-                    const currentUserId = await getCurrentUserId();
-                    const senderId = typeof message.senderId === 'object' ? message.senderId._id : message.senderId;
-
-                    if (senderId !== currentUserId) {
-                        console.log('📨 Real-time message received from other user, incrementing unread count');
-                        setUnreadCount((prev) => prev + 1);
-                    } else {
-                        console.log('📨 Real-time message received (own message), not incrementing unread');
-                    }
+                socketService.onNewMessage((message) => {
+                    console.log('📨 Real-time message received, updating unread count');
+                    // Increment unread count for new messages
+                    setUnreadCount((prev) => prev + 1);
                     // Reset API error count and circuit breaker when socket works
                     apiErrorCountRef.current = 0;
                     isCircuitOpenRef.current = false;
@@ -170,7 +140,6 @@ export default function MainLayout() {
     return (
         <View style={styles.container}>
             <Tabs
-                backBehavior="history"
                 screenOptions={{
                     headerShown: false,
                     tabBarStyle: [
@@ -215,10 +184,8 @@ export default function MainLayout() {
                             <View>
                                 <Heart size={size} color={color} />
                                 {newMatchCount > 0 && (
-                                    <View style={styles.badgeWithCount}>
-                                        <Text style={styles.badgeText}>
-                                            {newMatchCount > 99 ? '99+' : newMatchCount}
-                                        </Text>
+                                    <View style={styles.badge}>
+                                        {/* Badge indicator */}
                                     </View>
                                 )}
                             </View>
@@ -227,9 +194,6 @@ export default function MainLayout() {
                     listeners={{
                         tabPress: () => {
                             setNewMatchCount(0);
-                            notificationService.markAllAsRead('match').catch(err => {
-                                console.error('Failed to mark match notifications as read:', err);
-                            });
                         },
                     }}
                 />
@@ -241,19 +205,12 @@ export default function MainLayout() {
                             <View>
                                 <MessageSquare size={size} color={color} />
                                 {unreadCount > 0 && (
-                                    <View style={styles.badgeWithCount}>
-                                        <Text style={styles.badgeText}>
-                                            {unreadCount > 99 ? '99+' : unreadCount}
-                                        </Text>
+                                    <View style={styles.badge}>
+                                        {/* Badge indicator */}
                                     </View>
                                 )}
                             </View>
                         ),
-                    }}
-                    listeners={{
-                        tabPress: () => {
-                            setUnreadCount(0);
-                        },
                     }}
                 />
                 <Tabs.Screen
@@ -326,22 +283,5 @@ const styles = StyleSheet.create({
         height: 8,
         borderRadius: 4,
         backgroundColor: '#e74c3c',
-    },
-    badgeWithCount: {
-        position: 'absolute',
-        top: -6,
-        right: -10,
-        minWidth: 18,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: '#e74c3c',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 4,
-    },
-    badgeText: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: '#FFFFFF',
     },
 });

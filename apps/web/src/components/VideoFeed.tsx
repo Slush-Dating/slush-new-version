@@ -156,11 +156,8 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ onOpenProfile, onMatch }) 
                 const formattedProfiles: Profile[] = feed
                     .filter(p => {
                         const name = p.name || '';
-                        const email = (p as any).email || '';
-                        const isAdmin = (p as any).isAdmin || false;
-                        return !name.toLowerCase().includes('admin') &&
-                            !email.toLowerCase().includes('admin') &&
-                            !isAdmin;
+                        const email = (p as any).email || ''; // email might not be in DiscoveryProfile but just in case
+                        return !name.toLowerCase().includes('admin') && !email.toLowerCase().includes('admin');
                     })
                     .map(p => ({
                         id: p.id,
@@ -695,7 +692,7 @@ const VideoCardTikTok: React.FC<VideoCardProps> = ({
                         <div className="icon-circle ice-breaker-circle">
                             <Snowflake size={28} stroke="white" strokeWidth={2.5} />
                         </div>
-                        <span className="ice-breaker-text">Ice Breaker</span>
+                        <span className="ice-breaker-text">Arctic</span>
                     </div>
 
                     <div

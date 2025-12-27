@@ -50,7 +50,6 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
   });
   const [isLoadingPartner, setIsLoadingPartner] = useState(false);
   const [agoraError, setAgoraError] = useState<string | null>(null);
-  const [pairedPartnerIds, setPairedPartnerIds] = useState<string[]>([]);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -184,16 +183,7 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
 
     // Real API mode
     try {
-      const response = await agoraService.getNextPartner(eventId, pairedPartnerIds);
-
-      // Check if all partners exhausted
-      if (response.allPartnersExhausted) {
-        console.log('All partners dated! Moving to summary.');
-        setCurrentPhase('summary');
-        setIsLoadingPartner(false);
-        return;
-      }
-
+      const response = await agoraService.getNextPartner(eventId);
       const newPartner: Partner = {
         id: response.partner.userId,
         userId: response.partner.userId,
@@ -457,12 +447,6 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
 
   const moveToNextPartner = async () => {
     await leaveAgoraChannel();
-
-    // Track this partner as someone we've dated
-    if (currentPartner?.userId) {
-      setPairedPartnerIds(prev => [...prev, currentPartner.userId]);
-    }
-
     setCurrentPartnerIndex(prev => prev + 1);
 
     // For mock partners, since we only have one, go to summary

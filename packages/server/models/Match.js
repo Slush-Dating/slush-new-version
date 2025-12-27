@@ -25,7 +25,7 @@ const matchSchema = new mongoose.Schema({
         },
         action: {
             type: String,
-            enum: ['like', 'pass', 'super_like', 'icebreaker'],
+            enum: ['like', 'pass', 'super_like'],
             required: true
         },
         context: {
@@ -82,19 +82,19 @@ matchSchema.index({ 'actions.fromUser': 1, 'actions.toUser': 1 });
 matchSchema.index({ user1: 1, user2: 1 }, { unique: true });
 
 // Method to check if users have matched
-matchSchema.methods.checkAndCreateMatch = function () {
+matchSchema.methods.checkAndCreateMatch = function() {
     // Check if user1 has liked user2 (from user1 to user2)
     const user1LikedUser2 = this.actions.some(
-        action => action.fromUser.toString() === this.user1.toString() &&
-            action.toUser.toString() === this.user2.toString() &&
-            ['like', 'super_like', 'icebreaker'].includes(action.action)
+        action => action.fromUser.toString() === this.user1.toString() && 
+                 action.toUser.toString() === this.user2.toString() &&
+                 (action.action === 'like' || action.action === 'super_like')
     );
-
+    
     // Check if user2 has liked user1 (from user2 to user1)
     const user2LikedUser1 = this.actions.some(
-        action => action.fromUser.toString() === this.user2.toString() &&
-            action.toUser.toString() === this.user1.toString() &&
-            ['like', 'super_like', 'icebreaker'].includes(action.action)
+        action => action.fromUser.toString() === this.user2.toString() && 
+                 action.toUser.toString() === this.user1.toString() &&
+                 (action.action === 'like' || action.action === 'super_like')
     );
 
     // Both users must have liked each other for a match

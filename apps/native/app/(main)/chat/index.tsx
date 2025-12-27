@@ -18,7 +18,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import { MessageSquare, Search, Loader2, Heart, Sparkles } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -61,17 +60,17 @@ export default function ChatListScreen() {
                 chatService.getChatList(),
                 matchService.getMatches(),
             ]);
-
+            
             console.log('📋 Chat list screen: Data fetched successfully', {
                 chatCount: chatList?.length || 0,
                 matchCount: matchesData?.length || 0
             });
-
+            
             setChats(Array.isArray(chatList) ? chatList : []);
             setMatches(Array.isArray(matchesData) ? matchesData : []);
         } catch (err: any) {
             console.error('📋 Chat list screen: Failed to fetch chat data:', err);
-
+            
             // Check if it's a session expired error
             if (err?.message === 'SESSION_EXPIRED') {
                 console.log('📋 Session expired, user may need to log in again');
@@ -96,13 +95,6 @@ export default function ChatListScreen() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
-
-    // Refresh chat list when screen comes into focus
-    useFocusEffect(
-        useCallback(() => {
-            fetchData();
-        }, [fetchData])
-    );
 
     // Socket setup for real-time message previews
     useEffect(() => {
@@ -137,11 +129,7 @@ export default function ChatListScreen() {
                 }
             });
 
-            // Only trigger haptic for messages from other users
-            const senderId = typeof message.senderId === 'object' ? message.senderId._id : message.senderId;
-            if (senderId !== currentUser.id) {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         };
 
         socketService.onNewMessage(handleNewMessage);

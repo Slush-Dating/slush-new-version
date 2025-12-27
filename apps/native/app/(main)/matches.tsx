@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Heart, Sparkles, MessageCircle, Users, Zap, Loader2, Crown, Snowflake } from 'lucide-react-native';
+import { Heart, Sparkles, MessageCircle, Users, Zap, Loader2, Crown } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -207,18 +207,7 @@ export default function MatchesScreen() {
     );
 
     const renderLikedYouItem = ({ item }: { item: any }) => (
-        <TouchableOpacity
-            style={[styles.gridCard, !user?.isPremium && styles.premiumLocked]}
-            onPress={() => {
-                if (user?.isPremium) {
-                    handleProfilePress(item.userId);
-                } else {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                    router.push('/(main)/premium');
-                }
-            }}
-            activeOpacity={user?.isPremium ? 0.9 : 1}
-        >
+        <View style={[styles.gridCard, !user?.isPremium && styles.premiumLocked]}>
             <View style={styles.cardImageContainer}>
                 <Image
                     source={{ uri: item.imageUrl ? getAbsoluteMediaUrl(item.imageUrl) : 'https://via.placeholder.com/200' }}
@@ -238,12 +227,6 @@ export default function MatchesScreen() {
                                     <Text style={styles.superLikeText}>Super Liked You!</Text>
                                 </View>
                             )}
-                            {item.isIceBreaker && (
-                                <View style={[styles.superLikeTag, styles.iceBreakerTag]}>
-                                    <Snowflake size={10} color="#ffffff" strokeWidth={3} />
-                                    <Text style={[styles.superLikeText, { color: '#ffffff' }]}>Ice Breaker!</Text>
-                                </View>
-                            )}
                         </View>
                     </>
                 ) : (
@@ -252,7 +235,7 @@ export default function MatchesScreen() {
                     </View>
                 )}
             </View>
-        </TouchableOpacity>
+        </View>
     );
 
     if (isLoading) {
@@ -559,9 +542,6 @@ const styles = StyleSheet.create({
         color: '#0EA5E9',
         fontSize: 10,
         fontWeight: '700',
-    },
-    iceBreakerTag: {
-        backgroundColor: 'rgba(14, 165, 233, 0.9)',
     },
     emptyContainer: {
         paddingVertical: 60,

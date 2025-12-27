@@ -28,8 +28,6 @@ import { router } from 'expo-router';
 
 import { discoveryService, matchService, type DiscoveryProfile } from '../../services/api';
 import VideoCard from '../../components/VideoCard';
-import MatchOverlay from '../../components/MatchOverlay';
-import { useAuth } from '../../hooks/useAuth';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -46,17 +44,6 @@ export default function FeedScreen() {
     const [error, setError] = useState('');
     const [isActionLoading, setIsActionLoading] = useState(false);
 
-    // Match overlay state
-    const [showMatchOverlay, setShowMatchOverlay] = useState(false);
-    const [matchData, setMatchData] = useState<any>(null);
-
-    const { user: authUser } = useAuth();
-    const currentUser = authUser ? {
-        name: authUser.name || 'You',
-        photos: authUser.photos,
-        imageUrl: authUser.photos?.[0]
-    } : null;
-
     // Animation values for action buttons
     const likeScale = useRef(new Animated.Value(1)).current;
     const icebreakerScale = useRef(new Animated.Value(1)).current;
@@ -72,14 +59,7 @@ export default function FeedScreen() {
         try {
             const feed = await discoveryService.getFeed();
             // Filter out admin users as a safety measure
-            const filteredFeed = feed.filter(profile => {
-                const isAdmin = profile.isAdmin || false;
-                const nameMatches = profile.name?.toLowerCase().includes('admin');
-                // The API might not return email for security, but check if we have it
-                const emailMatches = (profile as any).email?.toLowerCase().includes('admin');
-
-                return !isAdmin && !nameMatches && !emailMatches;
-            });
+            const filteredFeed = feed.filter(profile => !profile.isAdmin);
             setProfiles(filteredFeed);
             setCurrentIndex(0);
         } catch (err) {
@@ -156,8 +136,7 @@ export default function FeedScreen() {
 
             if (result.isMatch) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                setMatchData(result.match);
-                setShowMatchOverlay(true);
+                // TODO: Show match overlay
                 console.log('🎉 Match!', result.match);
             }
 
@@ -203,15 +182,7 @@ export default function FeedScreen() {
                     style={styles.profileOverlayTouchable}
                 >
                     <LinearGradient
-                        colors={[
-                            'transparent',
-                            'rgba(0,0,0,0.05)',
-                            'rgba(0,0,0,0.2)',
-                            'rgba(0,0,0,0.5)',
-                            'rgba(0,0,0,0.7)',
-                            'rgba(0,0,0,0.85)'
-                        ]}
-                        locations={[0, 0.2, 0.4, 0.6, 0.8, 1]}
+                        colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.8)']}
                         style={styles.profileOverlay}
                     >
                         <View style={styles.profileInfo}>
@@ -280,7 +251,7 @@ export default function FeedScreen() {
                                     <Snowflake size={24} color="#ffffff" strokeWidth={2.5} />
                                 </View>
                             </LinearGradient>
-                            <Text style={styles.actionLabel}>Ice Breaker</Text>
+                            <Text style={styles.actionLabel}>Arctic</Text>
                         </TouchableOpacity>
                     </Animated.View>
 
@@ -371,22 +342,6 @@ export default function FeedScreen() {
                 windowSize={5}
                 removeClippedSubviews={true}
             />
-
-            {/* Match Overlay */}
-            <MatchOverlay
-                isVisible={showMatchOverlay}
-                matchData={matchData}
-                currentUser={currentUser}
-                onStartChat={(matchId) => {
-                    setShowMatchOverlay(false);
-                    router.push(`/(main)/chat/${matchId}`);
-                }}
-                onDismiss={() => setShowMatchOverlay(false)}
-                onViewProfile={(userId) => {
-                    setShowMatchOverlay(false);
-                    router.push(`/(main)/user/${userId}`);
-                }}
-            />
         </View>
     );
 }
@@ -473,18 +428,17 @@ const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 0,
         left: 0,
-        right: 0,
-        height: '45%', // Increased height for a smoother transition
+        right: 80, // Leave space for action buttons
+        paddingHorizontal: 20,
+        paddingBottom: 100,
+        paddingTop: 80,
     },
     profileOverlay: {
-        flex: 1,
-        paddingHorizontal: 20,
-        paddingBottom: 110, // Adjust for bottom tab bar if needed
-        justifyContent: 'flex-end',
+        width: '100%',
+        height: '100%',
     },
     profileInfo: {
-        gap: 4,
-        paddingRight: 80, // Space for action buttons
+        gap: 6,
     },
     name: {
         fontSize: 26,

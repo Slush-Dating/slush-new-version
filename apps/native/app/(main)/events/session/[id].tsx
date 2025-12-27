@@ -72,7 +72,6 @@ try {
 import { eventService, matchService, agoraService } from '../../../../services/api';
 import { getAbsoluteMediaUrl } from '../../../../services/apiConfig';
 import socketService from '../../../../services/socketService';
-import MatchOverlay from '../../../../components/MatchOverlay';
 import { getCurrentUserId } from '../../../../services/authService';
 import { useAuth } from '../../../../hooks/useAuth';
 
@@ -123,18 +122,6 @@ export default function EventSessionScreen() {
     });
     const [showTimeNotification, setShowTimeNotification] = useState<string | null>(null);
     const [absentUsers, setAbsentUsers] = useState<Set<string>>(new Set());
-    const [pairedPartnerIds, setPairedPartnerIds] = useState<string[]>([]);
-    const [isUserAbsent, setIsUserAbsent] = useState(false);
-
-    // Match overlay state
-    const [showMatchOverlay, setShowMatchOverlay] = useState(false);
-    const [matchData, setMatchData] = useState<any>(null);
-
-    const currentUser = user ? {
-        name: user.name || 'You',
-        photos: user.photos,
-        imageUrl: user.photos?.[0]
-    } : null;
 
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const agoraEngineRef = useRef<IRtcEngine | null>(null);
@@ -165,7 +152,7 @@ export default function EventSessionScreen() {
                 // Get appId from backend first (we'll use a dummy channel name to get the appId)
                 // In production, you might want to store appId in config or get it separately
                 let appId = appIdRef.current;
-
+                
                 if (!appId) {
                     try {
                         // Get token to retrieve appId (using a temporary channel name)
@@ -177,20 +164,20 @@ export default function EventSessionScreen() {
                         // Continue without appId - will handle during join
                     }
                 }
-
+                
                 // Create Agora engine instance using v4.x API
                 const engine = createAgoraRtcEngine();
                 await engine.initialize({
                     appId: appId || '',
                 });
-
+                
                 // Enable video and audio
                 await engine.enableVideo();
                 await engine.enableAudio();
-
+                
                 // Set channel profile to communication
                 await engine.setChannelProfile(ChannelProfileType.ChannelProfileCommunication);
-
+                
                 // Register event handlers
                 engine.registerEventHandler({
                     onJoinChannelSuccess: (channel: string, uid: number, elapsed: number) => {
@@ -222,13 +209,13 @@ export default function EventSessionScreen() {
                         setAgoraError(`Agora error: ${msg}`);
                     },
                 });
-
+                
                 // Setup local canvas
                 localCanvasRef.current = {
                     uid: 0,
                     sourceType: VideoSourceType.VideoSourceCamera,
                 };
-
+                
                 agoraEngineRef.current = engine;
                 setIsAgoraInitialized(true);
             } catch (error) {
@@ -236,9 +223,9 @@ export default function EventSessionScreen() {
                 setAgoraError(`Failed to initialize Agora: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
         };
-
+        
         initAgora();
-
+        
         return () => {
             cleanupAgora();
         };
@@ -282,7 +269,7 @@ export default function EventSessionScreen() {
         // If test phase is provided, set it up directly
         if (testPhase) {
             const testPhaseTyped = testPhase as SessionPhase;
-
+            
             // Set appropriate time and state for test phase
             switch (testPhaseTyped) {
                 case 'lobby':
@@ -420,30 +407,15 @@ export default function EventSessionScreen() {
                 throw new Error('Event ID is required');
             }
 
-            // Fetch next partner from API, excluding already-paired partners
-            const result = await agoraService.getNextPartner(id, pairedPartnerIds);
-
-            // Check if all partners have been met
-            if (result.allPartnersExhausted) {
-                console.log('All partners dated! Moving to summary.');
-                setPhase('summary');
-                return;
-            }
-
+            // Fetch next partner from API
+            const result = await agoraService.getNextPartner(id);
             setPartner(result.partner);
             setPhase('lobby');
             setTimeLeft(TIMING.LOBBY);
-        } catch (error: any) {
+        } catch (error) {
             console.error('Failed to fetch next partner:', error);
-
-            // Check if all partners exhausted (404 with specific message)
-            if (error?.message?.includes('met everyone') || error?.message?.includes('exhausted')) {
-                setPhase('summary');
-                return;
-            }
-
             setAgoraError(`Failed to fetch partner: ${error instanceof Error ? error.message : 'Unknown error'}`);
-
+            
             // Fallback to mock partner for testing
             const mockPartner: Partner = {
                 id: `partner_${roundNumber}`,
@@ -568,19 +540,15 @@ export default function EventSessionScreen() {
 
             if (result.isMatch) {
                 setMatches((prev) => [...prev, partner]);
-                setMatchData(result.match);
-                setShowMatchOverlay(true);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
 
             setLikedPartners((prev) => [...prev, partner.userId]);
-
-            if (!result.isMatch) {
-                moveToNextRound(true);
-            }
         } catch (error) {
             console.error('Like failed:', error);
         }
+
+        moveToNextRound(true);
     };
 
     const handlePass = async () => {
@@ -617,27 +585,23 @@ export default function EventSessionScreen() {
 
             if (result.isMatch) {
                 setMatches((prev) => [...prev, partner]);
-                setMatchData(result.match);
-                setShowMatchOverlay(true);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
 
             setLikedPartners((prev) => [...prev, partner.userId]);
-
-            if (!result.isMatch) {
-                moveToNextRound(true);
-            }
         } catch (error) {
             console.error('Super like failed:', error);
             // Fallback to regular like if super like fails
             await handleLike();
             return;
         }
+
+        moveToNextRound(true);
     };
 
     const moveToNextRound = async (liked: boolean) => {
         // Don't allow absent users to move to next rounds
-        if (isUserAbsent || (user?.id && absentUsers.has(user.id))) {
+        if (user?.id && absentUsers.has(user.id)) {
             console.log('User is absent, staying in waiting phase');
             setPhase('waiting');
             return;
@@ -645,11 +609,6 @@ export default function EventSessionScreen() {
 
         if (timerRef.current) {
             clearInterval(timerRef.current);
-        }
-
-        // Track this partner as someone we've dated
-        if (partner?.userId) {
-            setPairedPartnerIds(prev => [...prev, partner.userId]);
         }
 
         // Leave current channel
@@ -690,7 +649,7 @@ export default function EventSessionScreen() {
 
         Alert.alert(
             'Leave Event',
-            'Are you sure you want to leave? You can rejoin later if you change your mind.',
+            'Are you sure you want to leave? You will be marked as absent and remain in the lobby until your next round.',
             [
                 { text: 'Stay', style: 'cancel' },
                 {
@@ -708,15 +667,23 @@ export default function EventSessionScreen() {
                             socketService.emit('user_left_event', id);
 
                             // Mark user as absent locally
-                            setIsUserAbsent(true);
                             if (user?.id) {
-                                const userId = user.id;
-                                setAbsentUsers(prev => new Set([...prev, userId]));
+                                setAbsentUsers(prev => new Set([...prev, user.id]));
                             }
 
-                            // Move to waiting phase with rejoin option
-                            setPhase('waiting');
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                            Alert.alert(
+                                'Left Event',
+                                'You have left the event and are now marked as absent. You will remain in the lobby until your next round.',
+                                [
+                                    {
+                                        text: 'OK',
+                                        onPress: () => {
+                                            // Stay in the session but in waiting/absent state
+                                            setPhase('waiting');
+                                        }
+                                    }
+                                ]
+                            );
                         } catch (error) {
                             console.error('Failed to leave event:', error);
                             Alert.alert('Error', 'Failed to leave event. Please try again.');
@@ -725,37 +692,6 @@ export default function EventSessionScreen() {
                 },
             ]
         );
-    };
-
-    const handleRejoinEvent = async () => {
-        try {
-            // Call the rejoin event API
-            await eventService.rejoinEvent(id);
-
-            // Mark user as no longer absent
-            setIsUserAbsent(false);
-            if (user?.id) {
-                const userId = user.id;
-                setAbsentUsers(prev => {
-                    const newSet = new Set(prev);
-                    newSet.delete(userId);
-                    return newSet;
-                });
-            }
-
-            // Emit socket event to notify others
-            socketService.emit('user_rejoined_event', id);
-
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            Alert.alert(
-                'Rejoined!',
-                'You have rejoined the event. Finding your next partner...',
-                [{ text: 'OK', onPress: () => fetchNextPartner() }]
-            );
-        } catch (error: any) {
-            console.error('Failed to rejoin event:', error);
-            Alert.alert('Error', error?.message || 'Failed to rejoin event. Please try again.');
-        }
     };
 
     const handleSkip = () => {
@@ -775,11 +711,11 @@ export default function EventSessionScreen() {
             // Animate profile card entrance
             profileScale.value = withSpring(1, { damping: 12, stiffness: 100 });
             profileOpacity.value = withTiming(1, { duration: 400 });
-
+            
             // Animate buttons entrance
             buttonsOpacity.value = withDelay(200, withTiming(1, { duration: 400 }));
             buttonsTranslateY.value = withDelay(200, withSpring(0, { damping: 12 }));
-
+            
             // Pulse timer when time is running low
             if (timeLeft <= 10) {
                 timerPulse.value = withSequence(
@@ -1045,27 +981,9 @@ export default function EventSessionScreen() {
                             />
                         </View>
                         <Text style={styles.waitingProgressText}>
-                            {isUserAbsent ? 'You left the event. Tap below to rejoin!' : 'Preparing your next date...'}
+                            {user?.id && absentUsers.has(user.id) ? 'Waiting for next round...' : 'Preparing your next date...'}
                         </Text>
                     </View>
-
-                    {/* Rejoin Button for absent users */}
-                    {isUserAbsent && (
-                        <TouchableOpacity
-                            style={styles.rejoinButton}
-                            onPress={handleRejoinEvent}
-                            activeOpacity={0.8}
-                        >
-                            <LinearGradient
-                                colors={['#10b981', '#059669']}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={styles.rejoinButtonGradient}
-                            >
-                                <Text style={styles.rejoinButtonText}>Rejoin Event</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    )}
                 </View>
             </SafeAreaView>
         );
@@ -1088,8 +1006,8 @@ export default function EventSessionScreen() {
                 <SafeAreaView style={styles.feedbackSafeArea} edges={['top', 'bottom']}>
                     {/* Close Button */}
                     <View style={styles.feedbackHeader}>
-                        <TouchableOpacity
-                            onPress={handleLeaveEvent}
+                        <TouchableOpacity 
+                            onPress={handleLeaveEvent} 
                             style={styles.closeButton}
                             activeOpacity={0.7}
                         >
@@ -1143,13 +1061,13 @@ export default function EventSessionScreen() {
                             )}
                             <View style={styles.feedbackProfileImageShadow} />
                         </View>
-
+                        
                         <View style={styles.feedbackProfileInfo}>
                             <Text style={styles.feedbackProfileName}>
                                 {partner?.name}
                                 {partner?.age && <Text style={styles.feedbackProfileAge}>, {partner.age}</Text>}
                             </Text>
-
+                            
                             {partner?.bio && (
                                 <Text style={styles.feedbackProfileBio}>{partner.bio}</Text>
                             )}
@@ -1158,8 +1076,8 @@ export default function EventSessionScreen() {
 
                     {/* Action Buttons with animation */}
                     <Animated.View style={[styles.feedbackActionButtons, buttonsAnimatedStyle]}>
-                        <TouchableOpacity
-                            style={styles.feedbackDislikeButton}
+                        <TouchableOpacity 
+                            style={styles.feedbackDislikeButton} 
                             onPress={handlePass}
                             activeOpacity={0.7}
                         >
@@ -1274,8 +1192,8 @@ export default function EventSessionScreen() {
             {/* Header */}
             <SafeAreaView style={styles.header} edges={['top']}>
                 {/* Back Button */}
-                <TouchableOpacity
-                    onPress={() => router.back()}
+                <TouchableOpacity 
+                    onPress={() => router.back()} 
                     style={styles.backButton}
                     activeOpacity={0.7}
                 >
@@ -1292,7 +1210,7 @@ export default function EventSessionScreen() {
                 </View>
 
                 {/* Camera Switch Button */}
-                <TouchableOpacity
+                <TouchableOpacity 
                     onPress={async () => {
                         if (agoraEngineRef.current) {
                             await agoraEngineRef.current.switchCamera();
@@ -1382,26 +1300,6 @@ export default function EventSessionScreen() {
                     </TouchableOpacity>
                 </View>
             </SafeAreaView>
-
-            {/* Match Overlay */}
-            <MatchOverlay
-                isVisible={showMatchOverlay}
-                matchData={matchData}
-                currentUser={currentUser}
-                onStartChat={(matchId) => {
-                    setShowMatchOverlay(false);
-                    // Stay in event for now, but mark it?
-                    // router.push(`/(main)/chat/${matchId}`);
-                }}
-                onDismiss={() => {
-                    setShowMatchOverlay(false);
-                    moveToNextRound(likedPartners.includes(partner?.userId || ''));
-                }}
-                onViewProfile={(userId) => {
-                    setShowMatchOverlay(false);
-                    router.push(`/(main)/user/${userId}`);
-                }}
-            />
         </View>
     );
 }
@@ -2228,27 +2126,5 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         textTransform: 'uppercase',
         letterSpacing: 1,
-    },
-    // Rejoin button styles
-    rejoinButton: {
-        marginTop: 24,
-        width: '80%',
-        shadowColor: '#10b981',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
-    },
-    rejoinButtonGradient: {
-        paddingVertical: 16,
-        paddingHorizontal: 32,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    rejoinButtonText: {
-        color: '#ffffff',
-        fontSize: 18,
-        fontWeight: 'bold',
     },
 });

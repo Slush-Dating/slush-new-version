@@ -14,7 +14,6 @@ import {
     Dimensions,
     ActivityIndicator,
     Alert,
-    Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -81,8 +80,6 @@ export default function UserProfileScreen() {
     const [isMuted, setIsMuted] = useState(false);
     const [bioExpanded, setBioExpanded] = useState(false);
     const [isActionLoading, setIsActionLoading] = useState(false);
-    const [isPreviewVisible, setIsPreviewVisible] = useState(false);
-    const [previewImage, setPreviewImage] = useState<string | null>(null);
 
     const videoRef = useRef<Video>(null);
 
@@ -365,42 +362,26 @@ export default function UserProfileScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
                 {/* Header Image Section */}
                 <View style={styles.headerImageContainer}>
-                    <ScrollView
-                        horizontal
-                        pagingEnabled
-                        showsHorizontalScrollIndicator={false}
-                        onMomentumScrollEnd={(e) => {
-                            const newIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-                            setCurrentMediaIndex(newIndex);
-                        }}
-                        bounces={false}
-                    >
-                        {mediaItems.map((item, index) => (
-                            <View key={index} style={styles.headerImage}>
-                                {item.type === 'video' ? (
-                                    <Video
-                                        ref={videoRef}
-                                        source={{ uri: getAbsoluteMediaUrl(item.url) }}
-                                        style={styles.headerImage}
-                                        resizeMode={ResizeMode.COVER}
-                                        shouldPlay={isPlaying && index === currentMediaIndex}
-                                        isLooping
-                                        isMuted={isMuted}
-                                    />
-                                ) : (
-                                    <Image
-                                        source={{ uri: getAbsoluteMediaUrl(item.url) }}
-                                        style={styles.headerImage}
-                                    />
-                                )}
-                            </View>
-                        ))}
-                        {mediaItems.length === 0 && (
-                            <View style={[styles.headerImage, styles.noMedia]}>
-                                <Text style={styles.noMediaText}>No photos</Text>
-                            </View>
-                        )}
-                    </ScrollView>
+                    {currentMedia?.type === 'video' ? (
+                        <Video
+                            ref={videoRef}
+                            source={{ uri: getAbsoluteMediaUrl(currentMedia.url) }}
+                            style={styles.headerImage}
+                            resizeMode={ResizeMode.COVER}
+                            shouldPlay={isPlaying}
+                            isLooping
+                            isMuted={isMuted}
+                        />
+                    ) : currentMedia ? (
+                        <Image
+                            source={{ uri: getAbsoluteMediaUrl(currentMedia.url) }}
+                            style={styles.headerImage}
+                        />
+                    ) : (
+                        <View style={[styles.headerImage, styles.noMedia]}>
+                            <Text style={styles.noMediaText}>No photos</Text>
+                        </View>
+                    )}
 
                     {/* Navigation Dots - Positioned below image */}
                     {mediaItems.length > 1 && (
@@ -566,9 +547,12 @@ export default function UserProfileScreen() {
                                     <TouchableOpacity
                                         key={index}
                                         onPress={() => {
-                                            setPreviewImage(photo);
-                                            setIsPreviewVisible(true);
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            const photoIndex = mediaItems.findIndex(
+                                                (item) => item.url === photo && item.type === 'photo'
+                                            );
+                                            if (photoIndex !== -1) {
+                                                setCurrentMediaIndex(photoIndex);
+                                            }
                                         }}
                                         style={styles.galleryItem}
                                     >
@@ -638,36 +622,6 @@ export default function UserProfileScreen() {
                     </TouchableOpacity>
                 </SafeAreaView>
             )}
-
-            {/* Image Preview Modal */}
-            <Modal
-                visible={isPreviewVisible}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setIsPreviewVisible(false)}
-            >
-                <TouchableOpacity
-                    style={styles.modalOverlay}
-                    activeOpacity={1}
-                    onPress={() => setIsPreviewVisible(false)}
-                >
-                    <SafeAreaView style={styles.modalContent}>
-                        <TouchableOpacity
-                            style={styles.closePreviewButton}
-                            onPress={() => setIsPreviewVisible(false)}
-                        >
-                            <X size={28} color="#ffffff" />
-                        </TouchableOpacity>
-                        {previewImage && (
-                            <Image
-                                source={{ uri: getAbsoluteMediaUrl(previewImage) }}
-                                style={styles.previewImage}
-                                resizeMode="contain"
-                            />
-                        )}
-                    </SafeAreaView>
-                </TouchableOpacity>
-            </Modal>
         </View>
     );
 }
@@ -767,6 +721,14 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 4,
         elevation: 3,
+    },
+    menuOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 15,
     },
     menuOverlay: {
         position: 'absolute',
@@ -1005,25 +967,5 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
         color: '#ffffff',
-    },
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    },
-    modalContent: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    closePreviewButton: {
-        position: 'absolute',
-        top: 40,
-        right: 20,
-        zIndex: 10,
-        padding: 10,
-    },
-    previewImage: {
-        width: SCREEN_WIDTH,
-        height: SCREEN_HEIGHT * 0.8,
     },
 });

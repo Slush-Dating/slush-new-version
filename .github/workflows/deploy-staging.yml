@@ -100,9 +100,9 @@ jobs:
           port: 22
           script: |
             # Apply staging nginx configuration
-            sudo cp /tmp/nginx-config-staging-slushdating-com.conf /etc/nginx/sites-available/staging-slushdating-com
+            sudo cp /tmp/apps/web/nginx-config-staging-slushdating-com.conf /etc/nginx/sites-available/staging-slushdating-com
             sudo ln -sf /etc/nginx/sites-available/staging-slushdating-com /etc/nginx/sites-enabled/staging-slushdating-com
-            sudo nginx -t && sudo systemctl restart nginx
+            sudo nginx -t && sudo systemctl reload nginx
             echo "✅ Staging nginx config applied"
             
             # Update server if changed

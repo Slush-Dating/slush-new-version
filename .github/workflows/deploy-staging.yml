@@ -24,12 +24,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build React app for staging
-        if: steps.changed-components.outputs.web_changed == 'true'
-        run: npm run build:staging
-        env:
-          VITE_ENV: staging
-
       - name: Check what components changed
         id: changed-components
         run: |
@@ -54,6 +48,12 @@ jobs:
               echo "native_changed=true" >> $GITHUB_OUTPUT
             fi
           fi
+
+      - name: Build React app for staging
+        if: steps.changed-components.outputs.web_changed == 'true'
+        run: npm run build:staging
+        env:
+          VITE_ENV: staging
 
       - name: Deploy nginx configs to VPS
         if: steps.changed-components.outputs.web_changed == 'true' || steps.changed-components.outputs.server_changed == 'true'
@@ -107,18 +107,24 @@ jobs:
             
             # Update server if changed
             if [ "${{ steps.changed-components.outputs.server_changed }}" = "true" ]; then
+              # Ensure staging server directory exists
+              mkdir -p /root/slush-staging/server
+              
+              # Copy updated server code to staging
               cd /tmp/slush-server-update
-              cp -r * /root/slush-app/server/
-              cd /root/slush-app/server
+              cp -r * /root/slush-staging/server/
+              cd /root/slush-staging/server
               npm install --production
-              pm2 restart slush-server || (cd /root/slush-app/server && pm2 start index.js --name slush-server)
+              
+              # Restart staging server
+              pm2 restart slush-server-staging || (cd /root/slush-staging/server && pm2 start index.js --name slush-server-staging --env staging)
               rm -rf /tmp/slush-server-update
-              echo "✅ Server updated and restarted"
+              echo "✅ Staging server updated and restarted"
+            else
+              # Even if server didn't change, restart to pick up any env changes
+              pm2 restart slush-server-staging
+              echo "✅ Staging server restarted"
             fi
-            
-            # Restart PM2 services
-            pm2 restart slush-server && pm2 restart slush-website
-            echo "✅ PM2 services restarted"
 
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.0.3

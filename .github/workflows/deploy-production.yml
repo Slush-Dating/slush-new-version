@@ -25,15 +25,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build React app for production
-        if: steps.changed-components.outputs.web_changed == 'true'
-        run: npm run web:build
-        env:
-          VITE_ENV: production
-          VITE_APP_URL: https://app.slushdating.com
-          VITE_API_URL: https://app.slushdating.com/api
-          VITE_USE_SUBPATH: "true"
-
       - name: Check what components changed
         id: changed-components
         run: |
@@ -58,6 +49,15 @@ jobs:
               echo "native_changed=true" >> $GITHUB_OUTPUT
             fi
           fi
+
+      - name: Build React app for production
+        if: steps.changed-components.outputs.web_changed == 'true'
+        run: npm run web:build
+        env:
+          VITE_ENV: production
+          VITE_APP_URL: https://app.slushdating.com
+          VITE_API_URL: https://app.slushdating.com/api
+          VITE_USE_SUBPATH: "true"
 
       - name: Deploy nginx config to VPS
         if: steps.changed-components.outputs.web_changed == 'true' || steps.changed-components.outputs.server_changed == 'true'
@@ -144,6 +144,7 @@ jobs:
           echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: main" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Server updated**: ${{ steps.server-changed.outputs.changed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Web updated**: ${{ steps.changed-components.outputs.web_changed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Server updated**: ${{ steps.changed-components.outputs.server_changed }}" >> $GITHUB_STEP_SUMMARY
           echo "- **URL**: https://www.slushdating.com/app" >> $GITHUB_STEP_SUMMARY
 

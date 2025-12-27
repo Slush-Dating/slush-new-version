@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { MapPin, Clock, Bookmark, Search, Filter, MessageSquare, Bell, Music, Dumbbell, Coffee, BarChart, Loader2, Calendar, Sparkles, Lock } from 'lucide-react';
 import { eventService, type EventData } from '../services/api';
 import { authService } from '../services/authService';
-import { getApiBaseUrl } from '../services/apiConfig';
+import { getAbsoluteMediaUrl } from '../services/apiConfig';
 import './Events.css';
 
 interface User {
@@ -42,13 +42,7 @@ export const Events: React.FC<EventsProps> = ({ onJoin, user, bookedEventId, onJ
     // Helper function to construct full image URL
     const getImageUrl = (url: string | null | undefined): string | undefined => {
         if (!url) return undefined;
-        // If already a full URL (starts with http), return as is
-        if (url.startsWith('http')) return url;
-        // Otherwise, construct full URL using API base URL
-        const apiBaseUrl = getApiBaseUrl();
-        // Remove /api from the end to get server base URL
-        const serverBaseUrl = apiBaseUrl.replace('/api', '');
-        return `${serverBaseUrl}${url}`;
+        return getAbsoluteMediaUrl(url);
     };
 
     // Fetch fresh user data
@@ -118,7 +112,7 @@ export const Events: React.FC<EventsProps> = ({ onJoin, user, bookedEventId, onJ
             });
             console.log('[Events] Booked event IDs:', Array.from(bookedIds));
             setBookedEventIds(bookedIds);
-            
+
             // If we have bookings and no bookedEventId prop, set the most recent one for countdown
             if (bookedIds.size > 0 && !bookedEventId) {
                 const mostRecentId = Array.from(bookedIds)[0];
@@ -163,7 +157,7 @@ export const Events: React.FC<EventsProps> = ({ onJoin, user, bookedEventId, onJ
         };
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        
+
         // Refresh every 30 seconds while component is mounted
         const interval = setInterval(() => {
             const token = localStorage.getItem('token');
@@ -265,7 +259,7 @@ export const Events: React.FC<EventsProps> = ({ onJoin, user, bookedEventId, onJ
             // Can join 15 minutes (900 seconds) before event starts
             const canJoinNow = diffSeconds <= 900 && diffSeconds > 0;
             setCanJoin(canJoinNow);
-            
+
             if (diffSeconds <= 900 && diffSeconds > 0) {
                 console.log('[Events] Join button should be active. Time remaining:', diffSeconds, 'seconds');
             }
@@ -526,105 +520,105 @@ export const Events: React.FC<EventsProps> = ({ onJoin, user, bookedEventId, onJ
                             safeEvents.map((event) => {
                                 const isBooked = event._id ? bookedEventIds.has(event._id) : false;
                                 return (
-                                <div
-                                    key={event._id}
-                                    className={`event-card-new ${isBooked ? 'booked' : ''}`}
-                                    onClick={() => {
-                                        if (isBooked) {
-                                            // Don't open detail if already booked, just show message or do nothing
-                                            return;
-                                        }
-                                        if (event.isPasswordProtected) {
-                                            setPasswordModal({ event, password: '' });
-                                        } else {
-                                            event._id && onJoin(event._id);
-                                        }
-                                    }}
-                                >
-                                    <div className="event-image-wrapper">
-                                        <img
-                                            src={getImageUrl(event.imageUrl) || '/default-event.png'}
-                                            alt={event.name}
-                                            className="event-image"
-                                            onError={(e) => {
-                                                console.warn('[Events] Image load failed:', event.imageUrl);
-                                                (e.target as HTMLImageElement).src = '/default-event.png';
-                                            }}
-                                        />
-                                        <div className="event-tags">
-                                            {isBooked && (
-                                                <span className="event-tag booked-tag" style={{
-                                                    background: 'rgba(34, 197, 94, 0.2)',
-                                                    color: '#15803d',
-                                                    fontWeight: 700
-                                                }}>
-                                                    ✓ Booked
+                                    <div
+                                        key={event._id}
+                                        className={`event-card-new ${isBooked ? 'booked' : ''}`}
+                                        onClick={() => {
+                                            if (isBooked) {
+                                                // Don't open detail if already booked, just show message or do nothing
+                                                return;
+                                            }
+                                            if (event.isPasswordProtected) {
+                                                setPasswordModal({ event, password: '' });
+                                            } else {
+                                                event._id && onJoin(event._id);
+                                            }
+                                        }}
+                                    >
+                                        <div className="event-image-wrapper">
+                                            <img
+                                                src={getImageUrl(event.imageUrl) || '/default-event.png'}
+                                                alt={event.name}
+                                                className="event-image"
+                                                onError={(e) => {
+                                                    console.warn('[Events] Image load failed:', event.imageUrl);
+                                                    (e.target as HTMLImageElement).src = '/default-event.png';
+                                                }}
+                                            />
+                                            <div className="event-tags">
+                                                {isBooked && (
+                                                    <span className="event-tag booked-tag" style={{
+                                                        background: 'rgba(34, 197, 94, 0.2)',
+                                                        color: '#15803d',
+                                                        fontWeight: 700
+                                                    }}>
+                                                        ✓ Booked
+                                                    </span>
+                                                )}
+                                                <span className="event-tag age-tag">
+                                                    Age group: {event.minAge || 18}-{event.maxAge || 99}
                                                 </span>
-                                            )}
-                                            <span className="event-tag age-tag">
-                                                Age group: {event.minAge || 18}-{event.maxAge || 99}
-                                            </span>
-                                            <span className="event-tag orientation-tag">{event.eventType || 'Straight'}</span>
-                                            {event.isPasswordProtected && (
-                                                <span className="event-tag private-tag">
-                                                    <Lock size={12} />
-                                                    Private
-                                                </span>
-                                            )}
+                                                <span className="event-tag orientation-tag">{event.eventType || 'Straight'}</span>
+                                                {event.isPasswordProtected && (
+                                                    <span className="event-tag private-tag">
+                                                        <Lock size={12} />
+                                                        Private
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <button className="bookmark-btn">
+                                                <Bookmark size={20} fill="currentColor" />
+                                            </button>
                                         </div>
-                                        <button className="bookmark-btn">
-                                            <Bookmark size={20} fill="currentColor" />
-                                        </button>
-                                    </div>
 
-                                    <div className="event-overlay">
-                                        <div className="event-date-box">
-                                            {formatDate(event.date)}
-                                        </div>
-                                        <div className="event-content">
-                                            <h3 className="event-title">{event.name}</h3>
-                                            <div className="event-meta">
-                                                <span className="meta-item">
-                                                    <MapPin size={14} />
-                                                    {formatLocation(event.location)}
-                                                </span>
-                                                <span className="meta-item">
-                                                    <Clock size={14} />
-                                                    {formatTime(event.date)}
-                                                </span>
+                                        <div className="event-overlay">
+                                            <div className="event-date-box">
+                                                {formatDate(event.date)}
                                             </div>
-                                            <div className="event-footer">
-                                                <div className="gender-pills">
-                                                    {(() => {
-                                                        const maleCount = Number(event.maleCount) || 0;
-                                                        const maxMale = Number(event.maxMaleParticipants) || 10;
-                                                        const isMaleFull = maxMale > 0 && maleCount >= maxMale;
-                                                        return (
-                                                            <span className={`gender-pill ${isMaleFull ? 'full' : 'available'}`}>
-                                                                <span className="gender-symbol">♂</span>
-                                                                {isMaleFull ? 'Full' : 'Available'}
-                                                            </span>
-                                                        );
-                                                    })()}
-                                                    {(() => {
-                                                        const femaleCount = Number(event.femaleCount) || 0;
-                                                        const maxFemale = Number(event.maxFemaleParticipants) || 10;
-                                                        const isFemaleFull = maxFemale > 0 && femaleCount >= maxFemale;
-                                                        return (
-                                                            <span className={`gender-pill ${isFemaleFull ? 'full' : 'available'}`}>
-                                                                <span className="gender-symbol">♀</span>
-                                                                {isFemaleFull ? 'Full' : 'Available'}
-                                                            </span>
-                                                        );
-                                                    })()}
+                                            <div className="event-content">
+                                                <h3 className="event-title">{event.name}</h3>
+                                                <div className="event-meta">
+                                                    <span className="meta-item">
+                                                        <MapPin size={14} />
+                                                        {formatLocation(event.location)}
+                                                    </span>
+                                                    <span className="meta-item">
+                                                        <Clock size={14} />
+                                                        {formatTime(event.date)}
+                                                    </span>
                                                 </div>
-                                                <div className="available-count">
-                                                    Available: {(event.maxMaleParticipants || 10) + (event.maxFemaleParticipants || 10) - (event.maleCount || 0) - (event.femaleCount || 0)}
+                                                <div className="event-footer">
+                                                    <div className="gender-pills">
+                                                        {(() => {
+                                                            const maleCount = Number(event.maleCount) || 0;
+                                                            const maxMale = Number(event.maxMaleParticipants) || 10;
+                                                            const isMaleFull = maxMale > 0 && maleCount >= maxMale;
+                                                            return (
+                                                                <span className={`gender-pill ${isMaleFull ? 'full' : 'available'}`}>
+                                                                    <span className="gender-symbol">♂</span>
+                                                                    {isMaleFull ? 'Full' : 'Available'}
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                        {(() => {
+                                                            const femaleCount = Number(event.femaleCount) || 0;
+                                                            const maxFemale = Number(event.maxFemaleParticipants) || 10;
+                                                            const isFemaleFull = maxFemale > 0 && femaleCount >= maxFemale;
+                                                            return (
+                                                                <span className={`gender-pill ${isFemaleFull ? 'full' : 'available'}`}>
+                                                                    <span className="gender-symbol">♀</span>
+                                                                    {isFemaleFull ? 'Full' : 'Available'}
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                    <div className="available-count">
+                                                        Available: {(event.maxMaleParticipants || 10) + (event.maxFemaleParticipants || 10) - (event.maleCount || 0) - (event.femaleCount || 0)}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
                                 );
                             })
                         )}

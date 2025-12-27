@@ -34,7 +34,7 @@ import * as Haptics from 'expo-haptics';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { useAuth } from '../../hooks/useAuth';
-import { getApiBaseUrl } from '../../services/apiConfig';
+import { getApiBaseUrl, getAbsoluteMediaUrl } from '../../services/apiConfig';
 import * as authService from '../../services/authService';
 
 const STEPS = [
@@ -469,7 +469,7 @@ export default function OnboardingScreen() {
                                                 </View>
                                             ) : photos[index] ? (
                                                 <Image
-                                                    source={{ uri: (photos[index].startsWith('http') || photos[index].startsWith('file')) ? photos[index] : `${getApiBaseUrl().replace('/api', '')}${photos[index]}` }}
+                                                    source={{ uri: getAbsoluteMediaUrl(photos[index]) }}
                                                     style={styles.media}
                                                     resizeMode="cover"
                                                 />

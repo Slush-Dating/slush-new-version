@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
             setIsLoading(true);
             console.log('🔄 Loading user from storage...');
-            
+
             const [token, savedUser] = await Promise.all([
                 authService.getToken().catch(err => {
                     console.warn('⚠️ Failed to get token:', err);
@@ -101,14 +101,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const fetchCurrentProfile = async () => {
         try {
+            console.log('🔄 Fetching current profile from API...');
             const profile = await authService.getCurrentProfile();
+            console.log('✅ Profile fetched successfully:', {
+                id: profile._id || profile.id,
+                name: profile.name,
+                email: profile.email,
+                hasPhotos: !!profile.photos && profile.photos.length > 0,
+                photoCount: profile.photos?.length || 0,
+                hasVideos: !!profile.videos && profile.videos.length > 0,
+                videoCount: profile.videos?.length || 0,
+                bio: profile.bio?.substring(0, 50) || 'No bio',
+                interests: profile.interests?.length || 0,
+            });
             setUser(profile);
         } catch (error) {
-            console.error('Failed to fetch current profile:', error);
+            console.error('❌ Failed to fetch current profile:', error);
             // Fallback to stored user if API call fails
             const savedUser = await authService.getUser();
             if (savedUser) {
+                console.log('📦 Using saved user from storage:', savedUser.email);
                 setUser(savedUser);
+            } else {
+                console.log('⚠️ No saved user found in storage');
             }
         }
     };

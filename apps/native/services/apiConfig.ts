@@ -77,16 +77,19 @@ export const getAbsoluteMediaUrl = (url: string): string => {
     const trimmedUrl = url.trim();
     if (!trimmedUrl) return '';
 
-    // Check if already absolute URL
-    if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')) {
-        // Basic URL validation - ensure it has a valid structure
-        try {
-            new URL(trimmedUrl);
-            return trimmedUrl;
-        } catch {
-            console.warn('Invalid absolute URL:', trimmedUrl);
-            return '';
+    // Check if already absolute URL or file URI
+    if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('file://')) {
+        // Basic URL validation for http/https - ensure it has a valid structure
+        if (trimmedUrl.startsWith('http')) {
+            try {
+                new URL(trimmedUrl);
+                return trimmedUrl;
+            } catch {
+                console.warn('Invalid absolute URL:', trimmedUrl);
+                return '';
+            }
         }
+        return trimmedUrl;
     }
 
     // For relative URLs, construct absolute URL

@@ -1,17 +1,13 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Heart, Snowflake, X, MapPin, Loader2 } from 'lucide-react';
 import { matchService, discoveryService } from '../services/api';
-import { getMediaBaseUrl } from '../services/apiConfig';
+import { getAbsoluteMediaUrl } from '../services/apiConfig';
 import './VideoFeed.css';
-
-// Use centralized API configuration for production support
-const API_BASE = getMediaBaseUrl();
 
 // Helper to construct full video URL
 const getFullUrl = (url: string | null | undefined): string => {
     if (!url) return '';
-    if (url.startsWith('http')) return url;
-    return `${API_BASE}${url}`;
+    return getAbsoluteMediaUrl(url);
 };
 
 interface Profile {

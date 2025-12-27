@@ -13,6 +13,7 @@ import {
     Image,
     Alert,
     Dimensions,
+    ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -32,6 +33,7 @@ import {
     Play,
     ArrowLeft,
     Clock,
+    User,
 } from 'lucide-react-native';
 
 import { useAuth } from '../../hooks/useAuth';
@@ -47,13 +49,33 @@ export default function ProfileScreen() {
     const handleBack = useBackNavigation('/(main)/feed');
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [bioExpanded, setBioExpanded] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
     // Fetch fresh profile data when screen comes into focus
     useFocusEffect(
         React.useCallback(() => {
-            fetchCurrentProfile();
+            console.log('📱 Profile screen focused, fetching profile...');
+            setIsLoading(true);
+            fetchCurrentProfile().finally(() => {
+                setIsLoading(false);
+            });
         }, [])
     );
+
+    // Debug log whenever user data changes
+    React.useEffect(() => {
+        console.log('👤 User data updated in profile screen:', {
+            hasUser: !!user,
+            userId: user?._id || user?.id,
+            name: user?.name,
+            email: user?.email,
+            photoCount: user?.photos?.length || 0,
+            firstPhoto: user?.photos?.[0],
+            videoCount: user?.videos?.length || 0,
+            hasBio: !!user?.bio,
+            interestCount: user?.interests?.length || 0,
+        });
+    }, [user]);
 
     const handleLogout = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -94,35 +116,78 @@ export default function ProfileScreen() {
     const currentImage = photos[currentImageIndex] || profileImage;
     const showReadMore = bioText.length > 150;
 
+    // Show loading indicator while fetching profile
+    if (isLoading && !user) {
+        return (
+            <SafeAreaView style={[styles.container, styles.loadingContainer]} edges={['top']}>
+                <ActivityIndicator size="large" color="#3B82F6" />
+                <Text style={styles.loadingText}>Loading profile...</Text>
+            </SafeAreaView>
+        );
+    }
+
+    // Show error message if no user data after loading
+    if (!isLoading && !user) {
+        return (
+            <SafeAreaView style={[styles.container, styles.loadingContainer]} edges={['top']}>
+                <Text style={styles.errorText}>Failed to load profile</Text>
+                <TouchableOpacity
+                    style={styles.retryButton}
+                    onPress={() => {
+                        setIsLoading(true);
+                        fetchCurrentProfile().finally(() => setIsLoading(false));
+                    }}
+                >
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+            </SafeAreaView>
+        );
+    }
+
     return (
-        <View style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top']}>
             <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                 {/* Header Image Section */}
                 <View style={styles.headerImageContainer}>
-                    <ScrollView
-                        horizontal
-                        pagingEnabled
-                        showsHorizontalScrollIndicator={false}
-                        onMomentumScrollEnd={(e) => {
-                            const newIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-                            setCurrentImageIndex(newIndex);
-                        }}
-                        bounces={false}
-                    >
-                        {photos.map((photo, index) => (
-                            <Image
-                                key={index}
-                                source={{ uri: getAbsoluteMediaUrl(photo) }}
-                                style={styles.headerImage}
-                            />
-                        ))}
-                        {photos.length === 0 && (
-                            <Image
-                                source={{ uri: profileImage }}
-                                style={styles.headerImage}
-                            />
-                        )}
-                    </ScrollView>
+                    {photos.length > 0 ? (
+                        <ScrollView
+                            horizontal
+                            pagingEnabled
+                            showsHorizontalScrollIndicator={false}
+                            onMomentumScrollEnd={(e) => {
+                                const newIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+                                setCurrentImageIndex(newIndex);
+                            }}
+                            bounces={false}
+                        >
+                            {photos.map((photo, index) => (
+                                <Image
+                                    key={index}
+                                    source={{ uri: getAbsoluteMediaUrl(photo) }}
+                                    style={[styles.headerImage, { width: SCREEN_WIDTH }]}
+                                    resizeMode="cover"
+                                />
+                            ))}
+                        </ScrollView>
+                    ) : (
+                        <View style={styles.headerImagePlaceholder}>
+                            {profileImage && profileImage !== 'https://via.placeholder.com/150' ? (
+                                <Image
+                                    source={{ uri: profileImage }}
+                                    style={[styles.headerImage, { width: SCREEN_WIDTH }]}
+                                    resizeMode="cover"
+                                    onError={() => {
+                                        console.log('Failed to load profile image');
+                                    }}
+                                />
+                            ) : (
+                                <View style={styles.noImageContainer}>
+                                    <User size={64} color="#94a3b8" />
+                                    <Text style={styles.noImageText}>No photo available</Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
 
                     {/* Navigation Dots */}
                     {photos.length > 1 && (
@@ -334,7 +399,7 @@ export default function ProfileScreen() {
                 {/* Version */}
                 <Text style={styles.version}>Version 1.0.0</Text>
             </ScrollView>
-        </View>
+        </SafeAreaView>
     );
 }
 
@@ -364,11 +429,28 @@ const styles = StyleSheet.create({
     headerImageContainer: {
         height: HEADER_HEIGHT,
         position: 'relative',
-        backgroundColor: '#000000',
+        backgroundColor: '#F3F4F6',
     },
     headerImage: {
-        width: '100%',
+        width: SCREEN_WIDTH,
         height: '100%',
+    },
+    headerImagePlaceholder: {
+        width: SCREEN_WIDTH,
+        height: '100%',
+        backgroundColor: '#F3F4F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    noImageContainer: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 12,
+    },
+    noImageText: {
+        fontSize: 16,
+        color: '#94a3b8',
+        fontWeight: '500',
     },
     dots: {
         position: 'absolute',
@@ -631,5 +713,31 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#9CA3AF',
         marginBottom: 40,
+    },
+    loadingContainer: {
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        marginTop: 16,
+        fontSize: 16,
+        color: '#64748b',
+    },
+    errorText: {
+        fontSize: 18,
+        color: '#ef4444',
+        marginBottom: 20,
+        fontWeight: '600',
+    },
+    retryButton: {
+        backgroundColor: '#3B82F6',
+        paddingHorizontal: 32,
+        paddingVertical: 12,
+        borderRadius: 20,
+    },
+    retryButtonText: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });

@@ -69,3 +69,4 @@ else
     echo "3. Check if SSH service is running on the server"
     exit 1
 fi
+

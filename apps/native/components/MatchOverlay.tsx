@@ -14,7 +14,7 @@ import {
     Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MessageCircle, X, Heart, User } from 'lucide-react-native';
+import { MessageCircle, X, Heart, User, Snowflake } from 'lucide-react-native';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -42,6 +42,7 @@ interface MatchData {
     };
     matchedAt: string;
     context: string;
+    isIceBreaker?: boolean;
 }
 
 interface MatchOverlayProps {
@@ -167,7 +168,9 @@ export function MatchOverlay({
 
                     <Animated.View style={[styles.content, contentStyle]}>
                         {/* Title */}
-                        <Text style={styles.itsAMatch}>It's a Match!</Text>
+                        <Text style={styles.itsAMatch}>
+                            {matchData.isIceBreaker ? 'Ice Broken!' : "It's a Match!"}
+                        </Text>
                         <Text style={styles.subtitle}>
                             You and {matchData.user.name} liked each other
                         </Text>
@@ -188,9 +191,19 @@ export function MatchOverlay({
                                 )}
                             </View>
 
-                            {/* Heart in the middle */}
-                            <Animated.View style={[styles.heartContainer, heartStyle]}>
-                                <Heart size={36} color="#ffffff" fill="#ffffff" />
+                            {/* Heart/Snowflake in the middle */}
+                            <Animated.View style={[
+                                styles.heartContainer,
+                                heartStyle,
+                                matchData.isIceBreaker && { backgroundColor: '#0EA5E9' }
+                            ]}>
+                                {matchData.isIceBreaker ? (
+                                    <View style={{ transform: [{ scale: 1.2 }] }}>
+                                        <Snowflake size={36} color="#ffffff" strokeWidth={2.5} />
+                                    </View>
+                                ) : (
+                                    <Heart size={36} color="#ffffff" fill="#ffffff" />
+                                )}
                             </Animated.View>
 
                             {/* Matched User Photo */}
@@ -217,8 +230,11 @@ export function MatchOverlay({
                                 style={styles.chatButton}
                                 onPress={handleStartChat}
                             >
-                                <MessageCircle size={20} color="#3B82F6" />
-                                <Text style={styles.chatButtonText}>Send Message</Text>
+                                <MessageCircle size={20} color={matchData.isIceBreaker ? "#0EA5E9" : "#3B82F6"} />
+                                <Text style={[
+                                    styles.chatButtonText,
+                                    matchData.isIceBreaker && { color: '#0EA5E9' }
+                                ]}>Send Message</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity

@@ -86,17 +86,38 @@ router.get('/feed', authenticate, async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Get all users the current user has matched with
-        // Exclude matched users (they should appear in matches, not discovery)
-        const userMatches = await Match.find({
+        // Get users to exclude: matched users, recently passed users (14 days), and already liked users
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+        const excludedMatches = await Match.find({
             $or: [{ user1: userId }, { user2: userId }],
-            isMatch: true
+            $or: [
+                { isMatch: true }, // Already matched
+                {
+                    actions: {
+                        $elemMatch: {
+                            fromUser: userId,
+                            action: 'pass',
+                            createdAt: { $gte: fourteenDaysAgo }
+                        }
+                    }
+                },
+                {
+                    actions: {
+                        $elemMatch: {
+                            fromUser: userId,
+                            action: { $in: ['like', 'super_like'] }
+                        }
+                    }
+                }
+            ]
         }).select('user1 user2').lean();
 
         const excludedUserIds = [userId.toString()];
 
-        // Exclude matched users from discovery feed
-        userMatches.forEach(match => {
+        // Exclude these users from discovery feed
+        excludedMatches.forEach(match => {
             const otherUserId = match.user1.toString() === userId.toString()
                 ? match.user2.toString()
                 : match.user1.toString();
@@ -108,9 +129,11 @@ router.get('/feed', authenticate, async (req, res) => {
         const query = {
             _id: { $nin: excludedUserIds.map(id => new mongoose.Types.ObjectId(id)) },
             onboardingCompleted: true,
-            isAdmin: { $ne: true },
-            email: { $not: { $regex: /admin/i } },
-            name: { $not: { $regex: /admin/i } }
+            $and: [
+                { isAdmin: { $ne: true } },
+                { email: { $not: { $regex: /admin/i } } },
+                { name: { $not: { $regex: /admin/i } } }
+            ]
         };
 
         // Debug: Log query details
@@ -284,16 +307,38 @@ router.get('/event-partners', authenticate, async (req, res) => {
             }
         }
 
-        // Get all users the current user has matched with
-        const userMatches = await Match.find({
+        // Get users to exclude: matched users, recently passed users (14 days), and already liked users
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+        const excludedMatches = await Match.find({
             $or: [{ user1: userId }, { user2: userId }],
-            isMatch: true
+            $or: [
+                { isMatch: true }, // Already matched
+                {
+                    actions: {
+                        $elemMatch: {
+                            fromUser: userId,
+                            action: 'pass',
+                            createdAt: { $gte: fourteenDaysAgo }
+                        }
+                    }
+                },
+                {
+                    actions: {
+                        $elemMatch: {
+                            fromUser: userId,
+                            action: { $in: ['like', 'super_like'] }
+                        }
+                    }
+                }
+            ]
         }).select('user1 user2').lean();
 
         const excludedUserIds = [userId.toString()];
 
-        // Exclude matched users from discovery feed
-        userMatches.forEach(match => {
+        // Exclude these users from discovery feed
+        excludedMatches.forEach(match => {
             const otherUserId = match.user1.toString() === userId.toString()
                 ? match.user2.toString()
                 : match.user1.toString();
@@ -305,9 +350,11 @@ router.get('/event-partners', authenticate, async (req, res) => {
         const query = {
             _id: { $nin: excludedUserIds.map(id => new mongoose.Types.ObjectId(id)) },
             onboardingCompleted: true,
-            isAdmin: { $ne: true },
-            email: { $not: { $regex: /admin/i } },
-            name: { $not: { $regex: /admin/i } }
+            $and: [
+                { isAdmin: { $ne: true } },
+                { email: { $not: { $regex: /admin/i } } },
+                { name: { $not: { $regex: /admin/i } } }
+            ]
         };
 
         // Apply gender filtering based on event type

@@ -33,8 +33,8 @@ const io = new Server(server, {
     }
 });
 
-// In-memory store for tracking online users
-const onlineUsers = new Map(); // userId -> socket.id
+// In-memory store for tracking online users: userId -> Set(socket.id)
+const onlineUsers = new Map();
 
 // Helper function to get user's matches for status broadcasting
 async function getUserMatches(userId) {
@@ -79,9 +79,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Slush Dating API Documentation',
-  customfavIcon: '/favicon.ico'
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Slush Dating API Documentation',
+    customfavIcon: '/favicon.ico'
 }));
 
 // Socket.IO connection handling
@@ -99,21 +99,25 @@ io.on('connection', (socket) => {
         socket.join(`user_${userId}`);
 
         // Mark user as online
-        onlineUsers.set(socket.userId, socket.id);
-        console.log(`User ${userId} authenticated and joined room user_${userId} (online users: ${onlineUsers.size})`);
+        if (!onlineUsers.has(socket.userId)) {
+            onlineUsers.set(socket.userId, new Set());
+
+            // Broadcast online status to all matched users only if this is the first connection
+            const matchedUsers = await getUserMatches(socket.userId);
+            matchedUsers.forEach(matchedUserId => {
+                io.to(`user_${matchedUserId}`).emit('user_status_change', {
+                    userId: socket.userId,
+                    isOnline: true
+                });
+            });
+            console.log(`Broadcasted online status for user ${userId} to ${matchedUsers.length} matched users`);
+        }
+
+        onlineUsers.get(socket.userId).add(socket.id);
+        console.log(`User ${userId} authenticated (socket: ${socket.id}, total connections: ${onlineUsers.get(socket.userId).size})`);
 
         // Emit confirmation
         socket.emit('authenticated', { userId: socket.userId });
-
-        // Broadcast online status to all matched users
-        const matchedUsers = await getUserMatches(socket.userId);
-        matchedUsers.forEach(matchedUserId => {
-            io.to(`user_${matchedUserId}`).emit('user_status_change', {
-                userId: socket.userId,
-                isOnline: true
-            });
-        });
-        console.log(`Broadcasted online status to ${matchedUsers.length} matched users`);
     });
 
     // Handle request to get a specific user's online status
@@ -373,20 +377,27 @@ io.on('connection', (socket) => {
 
     // Handle disconnect
     socket.on('disconnect', async () => {
-        if (socket.userId) {
-            // Mark user as offline
-            onlineUsers.delete(socket.userId);
-            console.log(`User ${socket.userId} disconnected (online users: ${onlineUsers.size})`);
+        if (socket.userId && onlineUsers.has(socket.userId)) {
+            const userSockets = onlineUsers.get(socket.userId);
+            userSockets.delete(socket.id);
 
-            // Broadcast offline status to all matched users
-            const matchedUsers = await getUserMatches(socket.userId);
-            matchedUsers.forEach(matchedUserId => {
-                io.to(`user_${matchedUserId}`).emit('user_status_change', {
-                    userId: socket.userId,
-                    isOnline: false
+            console.log(`Socket ${socket.id} disconnected for user ${socket.userId} (remaining: ${userSockets.size})`);
+
+            // Only mark as offline and broadcast if no more active connections
+            if (userSockets.size === 0) {
+                onlineUsers.delete(socket.userId);
+                console.log(`User ${socket.userId} is now fully offline`);
+
+                // Broadcast offline status to all matched users
+                const matchedUsers = await getUserMatches(socket.userId);
+                matchedUsers.forEach(matchedUserId => {
+                    io.to(`user_${matchedUserId}`).emit('user_status_change', {
+                        userId: socket.userId,
+                        isOnline: false
+                    });
                 });
-            });
-            console.log(`Broadcasted offline status to ${matchedUsers.length} matched users`);
+                console.log(`Broadcasted offline status for user ${socket.userId} to ${matchedUsers.length} matched users`);
+            }
         }
 
         if (socket.eventId) {

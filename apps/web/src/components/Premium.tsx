@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, Crown, Zap, Sparkles, ShieldCheck, Heart } from 'lucide-react';
+import { ChevronLeft, Crown, Zap, Sparkles, Heart } from 'lucide-react';
 import { authService } from '../services/authService';
 import './Premium.css';
 

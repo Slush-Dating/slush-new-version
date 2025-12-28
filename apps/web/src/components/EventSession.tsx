@@ -51,9 +51,6 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
   });
   const [isLoadingPartner, setIsLoadingPartner] = useState(false);
   const [agoraError, setAgoraError] = useState<string | null>(null);
-  const [roundNumber, setRoundNumber] = useState(1);
-  const [serverChannelName, setServerChannelName] = useState<string | null>(null);
-  const [waitingForPartner, setWaitingForPartner] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -103,9 +100,6 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
 
       console.log('[EventSession] Partner assigned from server:', data);
       setCurrentPartner(data.partner);
-      setRoundNumber(data.round);
-      setServerChannelName(data.channelName);
-      setWaitingForPartner(false);
       setIsLoadingPartner(false);
       setPartners(prev => [...prev, data.partner]);
       setSessionStats(prev => ({ ...prev, totalPartners: prev.totalPartners + 1 }));
@@ -145,7 +139,6 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
     const handleRoundEnded = (data: any) => {
       if (data.eventId !== eventId) return;
       console.log('[EventSession] Round ended, waiting for next partner...');
-      setWaitingForPartner(true);
       socketService.emitStartEventRound(eventId);
     };
 
@@ -158,8 +151,6 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
     const handleWaitingForPartner = (data: any) => {
       if (data.eventId !== eventId) return;
       console.log('[EventSession] Waiting for partner (odd participant)');
-      setWaitingForPartner(true);
-      setRoundNumber(data.round);
     };
 
     socketService.onPartnerAssigned(handlePartnerAssigned);
@@ -239,103 +230,6 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
       return () => clearInterval(timer);
     }
   }, [currentPhase, feedbackTimeLeft]);
-
-  const fetchNextPartner = async () => {
-    setIsLoadingPartner(true);
-    setAgoraError(null);
-
-    // Initialize camera for prep phase (don't await to avoid blocking)
-    const initCamera = () => {
-      if (isCamOn && !localVideoTrackRef.current) {
-        AgoraRTC.createCameraVideoTrack()
-          .then(track => {
-            localVideoTrackRef.current = track;
-            if (localVideoRef.current) {
-              track.play(localVideoRef.current);
-            }
-          })
-          .catch(error => console.error('Error initializing camera:', error));
-      }
-    };
-
-    // Use mock partner for testing mode
-    if (useTestMode) {
-      const mockPartner: Partner = {
-        id: 'test-partner-' + Date.now(),
-        userId: 'test-partner',
-        name: 'Test Partner',
-        age: 25,
-        imageUrl: null,
-        bio: 'This is a test partner for development. Toggle "Test Mode" off to use real API.'
-      };
-
-      setCurrentPartner(mockPartner);
-      setPartners(prev => [...prev, mockPartner]);
-      setSessionStats(prev => ({ ...prev, totalPartners: (prev.totalPartners || 0) + 1 }));
-      setCurrentPhase('prep');
-      setPrepTimeLeft(EVENT_TIMING.PREP_SECONDS);
-      initCamera();
-      setIsLoadingPartner(false);
-      return;
-    }
-
-    // Real API mode - check for server-assigned partner or fallback to API
-    try {
-      // Server-side matchmaking assigns partners via socket, but we can also poll the API
-      const response = await agoraService.getNextPartner(eventId);
-
-      // Check if all partners exhausted
-      if (response.allPartnersExhausted) {
-        console.log('All partners dated! Moving to summary.');
-        setCurrentPhase('summary');
-        setIsLoadingPartner(false);
-        return;
-      }
-
-      const newPartner: Partner = {
-        id: response.partner.userId,
-        userId: response.partner.userId,
-        name: response.partner.name,
-        age: response.partner.age,
-        imageUrl: response.partner.imageUrl,
-        bio: response.partner.bio || ''
-      };
-
-      setCurrentPartner(newPartner);
-      setPartners(prev => [...prev, newPartner]);
-      setSessionStats(prev => ({ ...prev, totalPartners: (prev.totalPartners || 0) + 1 }));
-      setCurrentPhase('prep');
-      setPrepTimeLeft(EVENT_TIMING.PREP_SECONDS);
-      initCamera();
-    } catch (error: any) {
-      console.error('Error fetching partner:', error);
-      setAgoraError(error.message || 'Failed to find partner. Try enabling Test Mode.');
-
-      // Fallback to mock partner if API fails and no partners yet
-      if (partners.length === 0) {
-        const mockPartner: Partner = {
-          id: 'test-partner-fallback',
-          userId: 'test-partner',
-          name: 'Test Partner',
-          age: 25,
-          imageUrl: null,
-          bio: 'API unavailable - using test partner. Enable Test Mode for reliable testing.'
-        };
-
-        setCurrentPartner(mockPartner);
-        setPartners([mockPartner]);
-        setSessionStats(prev => ({ ...prev, totalPartners: 1 }));
-        setCurrentPhase('prep');
-        setPrepTimeLeft(EVENT_TIMING.PREP_SECONDS);
-        initCamera();
-      } else {
-        // No more partners, go to summary
-        setCurrentPhase('summary');
-      }
-    } finally {
-      setIsLoadingPartner(false);
-    }
-  };
 
   const leaveAgoraChannel = async () => {
     try {

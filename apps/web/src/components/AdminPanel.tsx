@@ -9,17 +9,6 @@ export const AdminPanel: React.FC = () => {
     const [activeView, setActiveView] = useState<'dashboard' | 'events' | 'users' | 'reports' | 'system'>('dashboard');
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [adminUser, setAdminUser] = useState<any>(null);
-    const [sessionExpired, setSessionExpired] = useState(false);
-
-    // Handle authentication errors (401) - auto logout
-    const handleAuthError = () => {
-        console.log('🔒 Admin session expired or invalid - logging out');
-        localStorage.removeItem('adminToken');
-        localStorage.removeItem('adminUser');
-        setIsAuthenticated(false);
-        setAdminUser(null);
-        setSessionExpired(true);
-    };
 
     // Check admin authentication on mount
     useEffect(() => {
@@ -49,7 +38,6 @@ export const AdminPanel: React.FC = () => {
         localStorage.setItem('adminUser', JSON.stringify(data.user));
         setIsAuthenticated(true);
         setAdminUser(data.user);
-        setSessionExpired(false); // Clear session expired flag on login
     };
 
     const handleLogout = () => {
@@ -59,38 +47,11 @@ export const AdminPanel: React.FC = () => {
         setAdminUser(null);
     };
 
-    // Enhanced fetch wrapper that handles 401 errors
-    // NOTE: All child components can use this to make authenticated API calls
-    // Example usage: const response = await fetchWithAuth(url, { method: 'POST', body: JSON.stringify(data) });
-    // This automatically adds admin token and handles session expiration
-    const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-        const adminToken = localStorage.getItem('adminToken');
-        if (!adminToken) {
-            handleAuthError();
-            throw new Error('No admin token found');
-        }
 
-        const response = await fetch(url, {
-            ...options,
-            headers: {
-                ...options.headers,
-                'Authorization': `Bearer ${adminToken}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        // Handle 401 Unauthorized - token expired or invalid
-        if (response.status === 401) {
-            handleAuthError();
-            throw new Error('Session expired');
-        }
-
-        return response;
-    };
 
     // Show login if not authenticated
     if (!isAuthenticated) {
-        return <AdminLogin onLogin={handleAdminLogin} sessionExpired={sessionExpired} />;
+        return <AdminLogin onLogin={handleAdminLogin} />;
     }
 
     return (

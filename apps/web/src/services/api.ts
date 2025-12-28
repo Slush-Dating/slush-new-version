@@ -823,13 +823,15 @@ export const chatService = {
 
 export interface NotificationData {
     id: string;
-    type: 'like' | 'match' | 'general' | 'security';
+    type: 'like' | 'match' | 'general' | 'security' | 'event_reminder' | 'event_starting' | 'new_events';
     title: string;
     description?: string | null;
     actionButton?: string | null;
     actionLink?: string | null;
     userImage?: string | null;
     matchId?: string | null;
+    eventId?: string | null;
+    reminderType?: '30_minutes' | '15_minutes' | '60_seconds' | 'waiting_room_open' | null;
     fromUserId?: string | null;
     isRead: boolean;
     timestamp: string;

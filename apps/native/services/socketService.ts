@@ -376,6 +376,133 @@ class SocketService {
             this.socket.emit(event, data);
         }
     }
+
+    // ===== Event Matchmaking Methods =====
+
+    /**
+     * Join an event session for matchmaking
+     */
+    joinEventSession(eventId: string): void {
+        if (this.socket?.connected) {
+            this.socket.emit('join_event_session', eventId);
+            console.log('📍 Joined event session:', eventId);
+        }
+    }
+
+    /**
+     * Leave an event session
+     */
+    leaveEventSession(eventId: string): void {
+        if (this.socket?.connected) {
+            this.socket.emit('leave_event_session', eventId);
+            console.log('📍 Left event session:', eventId);
+        }
+    }
+
+    /**
+     * Emit start event round - triggers server matchmaking
+     */
+    emitStartEventRound(eventId: string): void {
+        if (this.socket?.connected) {
+            this.socket.emit('start_event_round', eventId);
+            console.log('🚀 Requested round start for event:', eventId);
+        }
+    }
+
+    /**
+     * Emit ready for matchmaking signal
+     */
+    emitReadyForMatchmaking(eventId: string): void {
+        if (this.socket?.connected) {
+            this.socket.emit('ready_for_matchmaking', eventId);
+            console.log('✅ Ready for matchmaking in event:', eventId);
+        }
+    }
+
+    /**
+     * Emit advance phase signal
+     */
+    emitAdvancePhase(eventId: string): void {
+        if (this.socket?.connected) {
+            this.socket.emit('advance_phase', eventId);
+            console.log('⏭️ Requested phase advance for event:', eventId);
+        }
+    }
+
+    /**
+     * Register handler for partner assignment from server
+     */
+    onPartnerAssigned(handler: (data: {
+        eventId: string;
+        round: number;
+        phase: string;
+        phaseDuration: number;
+        phaseStartTime: string;
+        partner: {
+            id: string;
+            userId: string;
+            name: string;
+            age: number | null;
+            bio: string;
+            imageUrl: string | null;
+        };
+        channelName: string;
+    }) => void): void {
+        if (this.socket) {
+            this.socket.on('partner_assigned', handler);
+        }
+    }
+
+    /**
+     * Register handler for phase changes from server
+     */
+    onPhaseChanged(handler: (data: {
+        eventId: string;
+        round: number;
+        phase: string;
+        phaseDuration: number;
+        phaseStartTime: string;
+    }) => void): void {
+        if (this.socket) {
+            this.socket.on('phase_changed', handler);
+        }
+    }
+
+    /**
+     * Register handler for round ended event
+     */
+    onRoundEnded(handler: (data: { eventId: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('round_ended', handler);
+        }
+    }
+
+    /**
+     * Register handler for event complete (all pairings exhausted)
+     */
+    onEventComplete(handler: (data: { eventId: string; message: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('event_complete', handler);
+        }
+    }
+
+    /**
+     * Register handler for waiting for partner (odd participant)
+     */
+    onWaitingForPartner(handler: (data: { eventId: string; round: number; message: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('waiting_for_partner', handler);
+        }
+    }
+
+    /**
+     * Register handler for participant count updates
+     */
+    onParticipantCountUpdate(handler: (data: { count: number; eventId: string; participants?: any[] }) => void): void {
+        if (this.socket) {
+            this.socket.on('participant_count_update', handler);
+        }
+    }
 }
 
 // Export singleton instance

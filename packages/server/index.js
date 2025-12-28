@@ -22,6 +22,9 @@ import Match from './models/Match.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
 import notificationService from './utils/notificationService.js';
+import matchmakingService from './services/EventMatchmakingService.js';
+import User from './models/User.js';
+import Event from './models/Event.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -296,24 +299,50 @@ io.on('connection', (socket) => {
         socket.to(`match_${matchId}`).emit('typing_stop', socket.userId);
     });
 
-    // Event session socket handlers
-    socket.on('join_event_session', (eventId) => {
+    // Event session socket handlers - integrated with matchmaking service
+    socket.on('join_event_session', async (data) => {
+        // Support both old format (just eventId string) and new format (object with eventId)
+        const eventId = typeof data === 'string' ? data : data.eventId;
+
         if (!socket.userId) {
             socket.emit('error', 'Authentication required');
             return;
         }
+
         socket.join(`event_session_${eventId}`);
         socket.eventId = eventId;
+
+        try {
+            // Get user info for matchmaking
+            const user = await User.findById(socket.userId).select('gender interestedIn').lean();
+            const event = await Event.findById(eventId).select('eventType').lean();
+
+            if (user && event) {
+                // Register with matchmaking service
+                matchmakingService.joinSession(eventId, socket.userId, socket.id, {
+                    gender: user.gender || 'other',
+                    interestedIn: user.interestedIn || 'everyone',
+                    eventType: event.eventType || 'straight',
+                });
+            }
+        } catch (err) {
+            console.error('[Socket] Error joining matchmaking session:', err);
+        }
+
         console.log(`User ${socket.userId} joined event session ${eventId}`);
 
-        // Get current participant count in this session
-        const room = io.sockets.adapter.rooms.get(`event_session_${eventId}`);
-        const participantCount = room ? room.size : 0;
+        // Get stats from matchmaking service
+        const stats = matchmakingService.getSessionStats(eventId);
+        const participantCount = stats ? stats.onlineCount : 0;
+
+        // Get list of participants for waiting room display
+        const participants = matchmakingService.getParticipants(eventId);
 
         // Notify all users in the session about the new participant count
         io.to(`event_session_${eventId}`).emit('participant_count_update', {
             count: participantCount,
-            eventId: eventId
+            eventId: eventId,
+            participants: participants,
         });
 
         // Notify others in the session that a user joined
@@ -325,20 +354,186 @@ io.on('connection', (socket) => {
     socket.on('leave_event_session', (eventId) => {
         socket.leave(`event_session_${eventId}`);
 
-        // Get updated participant count after leaving
-        const room = io.sockets.adapter.rooms.get(`event_session_${eventId}`);
-        const participantCount = room ? room.size : 0;
+        // Update matchmaking service
+        matchmakingService.leaveSession(eventId, socket.userId);
+
+        // Get updated stats from matchmaking service
+        const stats = matchmakingService.getSessionStats(eventId);
+        const participantCount = stats ? stats.onlineCount : 0;
+        const participants = matchmakingService.getParticipants(eventId);
 
         // Notify remaining users about the updated count
         io.to(`event_session_${eventId}`).emit('participant_count_update', {
             count: participantCount,
-            eventId: eventId
+            eventId: eventId,
+            participants: participants,
         });
 
         socket.to(`event_session_${eventId}`).emit('user_left_session', {
             userId: socket.userId
         });
         console.log(`User ${socket.userId} left event session ${eventId}`);
+    });
+
+    // Ready for matchmaking - signals user is ready for the next round
+    socket.on('ready_for_matchmaking', (eventId) => {
+        if (!socket.userId) {
+            socket.emit('error', 'Authentication required');
+            return;
+        }
+
+        matchmakingService.markReady(eventId, socket.userId);
+
+        const stats = matchmakingService.getSessionStats(eventId);
+        console.log(`User ${socket.userId} ready for matchmaking. Stats:`, stats);
+
+        // Emit updated stats
+        io.to(`event_session_${eventId}`).emit('matchmaking_stats', stats);
+    });
+
+    // Request to start the next round (usually triggered by one client when event starts)
+    socket.on('start_event_round', async (eventId) => {
+        if (!socket.userId) {
+            socket.emit('error', 'Authentication required');
+            return;
+        }
+
+        // Check if all pairings are exhausted
+        if (matchmakingService.areAllPairingsExhausted(eventId)) {
+            io.to(`event_session_${eventId}`).emit('event_complete', {
+                eventId,
+                message: 'All possible pairings have been completed!',
+            });
+            return;
+        }
+
+        // Start new round
+        const roundInfo = matchmakingService.startRound(eventId);
+
+        if (!roundInfo || roundInfo.pairings.length === 0) {
+            io.to(`event_session_${eventId}`).emit('waiting_for_participants', {
+                eventId,
+                message: 'Waiting for more participants to join...',
+            });
+            return;
+        }
+
+        // Notify each user of their assigned partner
+        for (const pairing of roundInfo.pairings) {
+            try {
+                // Get partner details for user1
+                const partner2 = await User.findById(pairing.user2)
+                    .select('name dob gender bio photos')
+                    .lean();
+
+                if (partner2) {
+                    // Calculate age
+                    let age = null;
+                    if (partner2.dob) {
+                        const today = new Date();
+                        const birthDate = new Date(partner2.dob);
+                        age = today.getFullYear() - birthDate.getFullYear();
+                        const monthDiff = today.getMonth() - birthDate.getMonth();
+                        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                            age--;
+                        }
+                    }
+
+                    io.to(`user_${pairing.user1}`).emit('partner_assigned', {
+                        eventId,
+                        round: roundInfo.round,
+                        phase: roundInfo.phase,
+                        phaseDuration: roundInfo.phaseDuration,
+                        phaseStartTime: roundInfo.phaseStartTime,
+                        partner: {
+                            id: partner2._id.toString(),
+                            userId: partner2._id.toString(),
+                            name: partner2.name || 'Partner',
+                            age,
+                            bio: partner2.bio || '',
+                            imageUrl: partner2.photos && partner2.photos.length > 0 ? partner2.photos[0] : null,
+                        },
+                        channelName: `event_${eventId}_round_${roundInfo.round}_${pairing.user1}_${pairing.user2}`,
+                    });
+                }
+
+                // Get partner details for user2
+                const partner1 = await User.findById(pairing.user1)
+                    .select('name dob gender bio photos')
+                    .lean();
+
+                if (partner1) {
+                    let age = null;
+                    if (partner1.dob) {
+                        const today = new Date();
+                        const birthDate = new Date(partner1.dob);
+                        age = today.getFullYear() - birthDate.getFullYear();
+                        const monthDiff = today.getMonth() - birthDate.getMonth();
+                        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                            age--;
+                        }
+                    }
+
+                    io.to(`user_${pairing.user2}`).emit('partner_assigned', {
+                        eventId,
+                        round: roundInfo.round,
+                        phase: roundInfo.phase,
+                        phaseDuration: roundInfo.phaseDuration,
+                        phaseStartTime: roundInfo.phaseStartTime,
+                        partner: {
+                            id: partner1._id.toString(),
+                            userId: partner1._id.toString(),
+                            name: partner1.name || 'Partner',
+                            age,
+                            bio: partner1.bio || '',
+                            imageUrl: partner1.photos && partner1.photos.length > 0 ? partner1.photos[0] : null,
+                        },
+                        channelName: `event_${eventId}_round_${roundInfo.round}_${pairing.user1}_${pairing.user2}`,
+                    });
+                }
+            } catch (err) {
+                console.error('[Socket] Error sending partner assignment:', err);
+            }
+        }
+
+        // Notify users without partners (odd count) that they're waiting
+        const participants = matchmakingService.getParticipants(eventId);
+        for (const p of participants) {
+            if (p.isOnline && !p.hasPartner) {
+                io.to(`user_${p.userId}`).emit('waiting_for_partner', {
+                    eventId,
+                    round: roundInfo.round,
+                    message: 'Waiting for next available partner...',
+                });
+            }
+        }
+
+        console.log(`[Matchmaking] Round ${roundInfo.round} started for event ${eventId} with ${roundInfo.pairings.length} pairs`);
+    });
+
+    // Advance to next phase in current round
+    socket.on('advance_phase', (eventId) => {
+        if (!socket.userId) {
+            socket.emit('error', 'Authentication required');
+            return;
+        }
+
+        const phaseInfo = matchmakingService.nextPhase(eventId);
+
+        if (phaseInfo) {
+            io.to(`event_session_${eventId}`).emit('phase_changed', {
+                eventId,
+                ...phaseInfo,
+            });
+            console.log(`[Matchmaking] Event ${eventId} advanced to phase ${phaseInfo.phase}`);
+        } else {
+            // End of round
+            matchmakingService.endRound(eventId);
+            io.to(`event_session_${eventId}`).emit('round_ended', {
+                eventId,
+            });
+            console.log(`[Matchmaking] Event ${eventId} round ended`);
+        }
     });
 
     socket.on('partner_matched', async (data) => {
@@ -366,6 +561,9 @@ io.on('connection', (socket) => {
             socket.emit('error', 'Authentication required');
             return;
         }
+
+        // Update matchmaking service
+        matchmakingService.leaveSession(eventId, socket.userId);
 
         // Notify all users in the event session that this user is now absent
         io.to(`event_session_${eventId}`).emit('user_absent', {

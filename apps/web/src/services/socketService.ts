@@ -285,6 +285,87 @@ class SocketService {
         }
     }
 
+    // Server-side matchmaking event handlers
+    onPartnerAssigned(callback: (data: {
+        eventId: string;
+        round: number;
+        phase: string;
+        phaseDuration: number;
+        phaseStartTime: string;
+        partner: {
+            id: string;
+            userId: string;
+            name: string;
+            age: number | null;
+            bio: string;
+            imageUrl: string | null;
+        };
+        channelName: string;
+    }) => void): void {
+        if (this.socket) {
+            this.socket.on('partner_assigned', callback);
+        }
+    }
+
+    onPhaseChanged(callback: (data: {
+        eventId: string;
+        round: number;
+        phase: string;
+        phaseDuration: number;
+        phaseStartTime: string;
+    }) => void): void {
+        if (this.socket) {
+            this.socket.on('phase_changed', callback);
+        }
+    }
+
+    onRoundEnded(callback: (data: { eventId: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('round_ended', callback);
+        }
+    }
+
+    onEventComplete(callback: (data: { eventId: string; message: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('event_complete', callback);
+        }
+    }
+
+    onWaitingForPartner(callback: (data: {
+        eventId: string;
+        round: number;
+        message: string;
+    }) => void): void {
+        if (this.socket) {
+            this.socket.on('waiting_for_partner', callback);
+        }
+    }
+
+    onUserAbsent(callback: (data: { userId: string; eventId: string }) => void): void {
+        if (this.socket) {
+            this.socket.on('user_absent', callback);
+        }
+    }
+
+    // Emit matchmaking events
+    emitStartEventRound(eventId: string): void {
+        if (this.socket) {
+            this.socket.emit('start_event_round', eventId);
+        }
+    }
+
+    emitReadyForMatchmaking(eventId: string): void {
+        if (this.socket) {
+            this.socket.emit('ready_for_matchmaking', eventId);
+        }
+    }
+
+    emitAdvancePhase(eventId: string): void {
+        if (this.socket) {
+            this.socket.emit('advance_phase', eventId);
+        }
+    }
+
     // Remove listeners
     off(event: string, callback?: (...args: any[]) => void): void {
         if (this.socket) {

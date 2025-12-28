@@ -4,6 +4,7 @@ import { ArrowLeft, Heart, X, Video, VideoOff, Mic, MicOff, Clock, Users, Messag
 import AgoraRTC from 'agora-rtc-sdk-ng';
 import type { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { agoraService, matchService } from '../services/api';
+import socketService from '../services/socketService';
 import './EventSession.css';
 
 interface Partner {
@@ -50,7 +51,9 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
   });
   const [isLoadingPartner, setIsLoadingPartner] = useState(false);
   const [agoraError, setAgoraError] = useState<string | null>(null);
-  const [pairedPartnerIds, setPairedPartnerIds] = useState<string[]>([]);
+  const [roundNumber, setRoundNumber] = useState(1);
+  const [serverChannelName, setServerChannelName] = useState<string | null>(null);
+  const [waitingForPartner, setWaitingForPartner] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -89,10 +92,104 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
     };
   }, []);
 
-  // Fetch first partner on mount
+  // Fetch first partner on mount and setup socket listeners
   useEffect(() => {
-    fetchNextPartner();
+    // Request round start from server when session starts
+    socketService.emitStartEventRound(eventId);
+
+    // Listen for server-assigned partner
+    const handlePartnerAssigned = (data: any) => {
+      if (data.eventId !== eventId) return;
+
+      console.log('[EventSession] Partner assigned from server:', data);
+      setCurrentPartner(data.partner);
+      setRoundNumber(data.round);
+      setServerChannelName(data.channelName);
+      setWaitingForPartner(false);
+      setIsLoadingPartner(false);
+      setPartners(prev => [...prev, data.partner]);
+      setSessionStats(prev => ({ ...prev, totalPartners: prev.totalPartners + 1 }));
+
+      // Set phase based on server state
+      if (data.phase === 'lobby') {
+        setCurrentPhase('prep');
+        setPrepTimeLeft(data.phaseDuration || EVENT_TIMING.PREP_SECONDS);
+      } else if (data.phase === 'date') {
+        setCurrentPhase('date');
+        setDateTimeLeft(data.phaseDuration || EVENT_TIMING.DATE_SECONDS);
+      } else if (data.phase === 'feedback') {
+        setCurrentPhase('feedback');
+        setFeedbackTimeLeft(data.phaseDuration || EVENT_TIMING.FEEDBACK_SECONDS);
+      }
+
+      // Initialize camera for prep
+      initCamera();
+    };
+
+    const handlePhaseChanged = (data: any) => {
+      if (data.eventId !== eventId) return;
+
+      console.log('[EventSession] Phase changed from server:', data);
+      if (data.phase === 'lobby') {
+        setCurrentPhase('prep');
+        setPrepTimeLeft(data.phaseDuration);
+      } else if (data.phase === 'date') {
+        setCurrentPhase('date');
+        setDateTimeLeft(data.phaseDuration);
+      } else if (data.phase === 'feedback') {
+        setCurrentPhase('feedback');
+        setFeedbackTimeLeft(data.phaseDuration);
+      }
+    };
+
+    const handleRoundEnded = (data: any) => {
+      if (data.eventId !== eventId) return;
+      console.log('[EventSession] Round ended, waiting for next partner...');
+      setWaitingForPartner(true);
+      socketService.emitStartEventRound(eventId);
+    };
+
+    const handleEventComplete = (data: any) => {
+      if (data.eventId !== eventId) return;
+      console.log('[EventSession] Event complete:', data.message);
+      setCurrentPhase('summary');
+    };
+
+    const handleWaitingForPartner = (data: any) => {
+      if (data.eventId !== eventId) return;
+      console.log('[EventSession] Waiting for partner (odd participant)');
+      setWaitingForPartner(true);
+      setRoundNumber(data.round);
+    };
+
+    socketService.onPartnerAssigned(handlePartnerAssigned);
+    socketService.onPhaseChanged(handlePhaseChanged);
+    socketService.onRoundEnded(handleRoundEnded);
+    socketService.onEventComplete(handleEventComplete);
+    socketService.onWaitingForPartner(handleWaitingForPartner);
+
+    return () => {
+      socketService.off('partner_assigned');
+      socketService.off('phase_changed');
+      socketService.off('round_ended');
+      socketService.off('event_complete');
+      socketService.off('waiting_for_partner');
+    };
   }, [eventId]);
+
+  // Initialize camera helper
+  const initCamera = () => {
+    if (isCamOn && !localVideoTrackRef.current) {
+      AgoraRTC.createCameraVideoTrack()
+        .then(track => {
+          localVideoTrackRef.current = track;
+          if (localVideoRef.current) {
+            track.play(localVideoRef.current);
+          }
+        })
+        .catch(error => console.error('Error initializing camera:', error));
+    }
+  };
 
   // Prep phase timer (60 seconds)
   useEffect(() => {
@@ -182,9 +279,10 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
       return;
     }
 
-    // Real API mode
+    // Real API mode - check for server-assigned partner or fallback to API
     try {
-      const response = await agoraService.getNextPartner(eventId, pairedPartnerIds);
+      // Server-side matchmaking assigns partners via socket, but we can also poll the API
+      const response = await agoraService.getNextPartner(eventId);
 
       // Check if all partners exhausted
       if (response.allPartnersExhausted) {
@@ -458,10 +556,7 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
   const moveToNextPartner = async () => {
     await leaveAgoraChannel();
 
-    // Track this partner as someone we've dated
-    if (currentPartner?.userId) {
-      setPairedPartnerIds(prev => [...prev, currentPartner.userId]);
-    }
+    // Server tracks pairing history, no need for client-side tracking
 
     setCurrentPartnerIndex(prev => prev + 1);
 
@@ -469,7 +564,8 @@ export const EventSession: React.FC<EventSessionProps> = ({ eventId, onComplete,
     if (currentPartner?.userId === 'test-partner') {
       setCurrentPhase('summary');
     } else {
-      await fetchNextPartner();
+      // Request next round from server - it will emit partner_assigned
+      socketService.emitStartEventRound(eventId);
     }
   };
 

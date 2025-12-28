@@ -166,8 +166,6 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
     try {
         const { eventId } = req.params;
         const userId = req.userId;
-        // Accept pairedPartnerIds from request body to avoid duplicate dates
-        const { pairedPartnerIds = [] } = req.body;
 
         // Get event
         const event = await Event.findById(eventId);
@@ -192,175 +190,80 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Get all participants for this event
-        const allParticipants = [
-            ...event.maleParticipants.map(id => id.toString()),
-            ...event.femaleParticipants.map(id => id.toString()),
-            ...event.otherParticipants.map(id => id.toString())
-        ].filter(id => id !== userId.toString());
+        // Import matchmaking service
+        const matchmakingService = (await import('../services/EventMatchmakingService.js')).default;
 
-        if (allParticipants.length === 0) {
-            return res.status(404).json({ message: 'No other participants found' });
-        }
+        // Ensure user is registered in matchmaking service
+        matchmakingService.joinSession(eventId, userId, null, {
+            gender: currentUser.gender || 'other',
+            interestedIn: currentUser.interestedIn || 'everyone',
+            eventType: event.eventType || 'straight',
+        });
 
-        // Get users that match preferences
-        const eventType = event.eventType || 'straight';
-        const currentUserGender = currentUser.gender || 'other';
-        const currentUserInterest = currentUser.interestedIn || 'everyone';
+        // Get session stats
+        const stats = matchmakingService.getSessionStats(eventId);
 
-        // Build query based on event type and user preferences
-        let genderFilter = {};
-        if (eventType === 'straight') {
-            if (currentUserGender === 'man') {
-                genderFilter = { gender: 'woman' };
-            } else if (currentUserGender === 'woman') {
-                genderFilter = { gender: 'man' };
-            }
-        } else if (eventType === 'gay') {
-            genderFilter = { gender: currentUserGender };
-        }
-        // For bisexual events, no gender filter
-
-        // Apply interestedIn preference
-        if (currentUserInterest === 'men') {
-            genderFilter = { gender: 'man' };
-        } else if (currentUserInterest === 'women') {
-            genderFilter = { gender: 'woman' };
-        }
-
-        // Build exclusion list: current user + already paired partners
-        const excludeIds = [
-            new mongoose.Types.ObjectId(userId),
-            ...pairedPartnerIds.map(id => {
-                try {
-                    return new mongoose.Types.ObjectId(id);
-                } catch (e) {
-                    return null;
-                }
-            }).filter(Boolean)
-        ];
-
-        // Find potential partners
-        // Always exclude admin users (admin users are for backend panel only)
-        // Also exclude already-paired partners to avoid duplicate dates
-        const query = {
-            _id: {
-                $in: allParticipants.map(id => new mongoose.Types.ObjectId(id)),
-                $nin: excludeIds
-            },
-            onboardingCompleted: true,
-            isAdmin: { $ne: true },
-            email: { $not: { $regex: /admin/i } },
-            name: { $not: { $regex: /admin/i } },
-            ...genderFilter
-        };
-
-        const potentialPartners = await User.find(query)
-            .select('name dob gender bio photos')
-            .limit(50)
-            .lean();
-
-        // Calculate total possible partners (including already-paired ones) for accurate exhaustion detection
-        const totalPossibleQuery = {
-            _id: {
-                $in: allParticipants.map(id => new mongoose.Types.ObjectId(id)),
-                $nin: [new mongoose.Types.ObjectId(userId)] // Only exclude current user, not paired partners
-            },
-            onboardingCompleted: true,
-            isAdmin: { $ne: true },
-            email: { $not: { $regex: /admin/i } },
-            name: { $not: { $regex: /admin/i } },
-            ...genderFilter
-        };
-
-        const totalPossiblePartners = await User.countDocuments(totalPossibleQuery);
-
-        if (potentialPartners.length === 0) {
-            // Check if all partners have been dated
-            const totalExcluded = pairedPartnerIds.length;
-
-            // Better exhaustion detection: check if we've dated everyone possible
-            if (totalExcluded > 0 && totalExcluded >= totalPossiblePartners) {
-                console.log(`[Agora API] User ${userId} has dated all ${totalPossiblePartners} possible partners. Event complete.`);
-                return res.status(404).json({
-                    message: 'You have met everyone available! Great job!',
-                    allPartnersExhausted: true,
-                    totalDated: totalExcluded,
-                    totalPossible: totalPossiblePartners
-                });
-            }
-
-            // No partners found but haven't dated everyone - might be a filtering issue
-            return res.status(404).json({
-                message: 'No matching partners found',
-                totalDated: totalExcluded,
-                totalPossible: totalPossiblePartners
+        // Check if all pairings exhausted
+        if (stats && stats.exhausted) {
+            return res.status(200).json({
+                allPartnersExhausted: true,
+                message: 'You have met everyone available! Great job!',
+                stats,
             });
         }
 
-        // Calculate age for each partner
-        const partnersWithAge = potentialPartners.map(partner => {
-            let age = null;
-            if (partner.dob) {
-                const today = new Date();
-                const birthDate = new Date(partner.dob);
-                age = today.getFullYear() - birthDate.getFullYear();
-                const monthDiff = today.getMonth() - birthDate.getMonth();
-                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-                    age--;
-                }
-            }
+        // Get assigned partner from matchmaking service
+        const assignedPartnerId = matchmakingService.getAssignedPartner(eventId, userId);
 
-            return {
-                id: partner._id.toString(),
-                userId: partner._id.toString(),
-                name: partner.name || 'Unknown',
-                age,
-                bio: partner.bio || '',
-                imageUrl: partner.photos && partner.photos.length > 0 ? partner.photos[0] : null
-            };
-        });
-
-        // Return a random partner from available pool
-        const randomPartner = partnersWithAge[Math.floor(Math.random() * partnersWithAge.length)];
-
-        console.log(`[Agora API] User ${userId} matched with ${randomPartner.userId}. Excluded ${pairedPartnerIds.length} previous partners. ${partnersWithAge.length} available.`);
-
-        // Initialize phase timing if not set (first time event starts)
-        if (!event.phaseStartTime) {
-            event.phaseStartTime = new Date();
-            event.currentPhase = 'lobby';
-            event.currentRound = 1;
-            event.lastPhaseUpdate = new Date();
-            await event.save();
+        if (!assignedPartnerId) {
+            // No partner assigned yet - client should wait for socket event
+            return res.status(200).json({
+                partner: null,
+                waitingForAssignment: true,
+                message: 'Waiting for matchmaking. Listen for partner_assigned socket event.',
+                stats,
+            });
         }
 
-        // Calculate time remaining in current phase
-        const now = new Date();
-        const phaseElapsed = event.phaseStartTime ? Math.floor((now - event.phaseStartTime) / 1000) : 0;
+        // Get partner details
+        const partner = await User.findById(assignedPartnerId)
+            .select('name dob gender bio photos')
+            .lean();
 
-        // Phase durations in seconds
-        const PHASE_DURATIONS = {
-            lobby: 60,
-            date: 180,
-            feedback: 60
-        };
+        if (!partner) {
+            return res.status(404).json({ message: 'Partner not found' });
+        }
 
-        const currentPhaseDuration = PHASE_DURATIONS[event.currentPhase] || 60;
-        const timeRemaining = Math.max(0, currentPhaseDuration - phaseElapsed);
+        // Calculate age
+        let age = null;
+        if (partner.dob) {
+            const today = new Date();
+            const birthDate = new Date(partner.dob);
+            age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+        }
+
+        const session = matchmakingService.getSession(eventId);
 
         res.json({
-            partner: randomPartner,
-            totalAvailable: partnersWithAge.length,
-            totalExcluded: pairedPartnerIds.length,
-            // Timing synchronization data
+            partner: {
+                id: partner._id.toString(),
+                userId: partner._id.toString(),
+                name: partner.name || 'Partner',
+                age,
+                bio: partner.bio || '',
+                imageUrl: partner.photos && partner.photos.length > 0 ? partner.photos[0] : null,
+            },
             timing: {
-                currentRound: event.currentRound,
-                currentPhase: event.currentPhase,
-                phaseStartTime: event.phaseStartTime,
-                timeRemaining: timeRemaining,
-                serverTime: now.toISOString()
-            }
+                currentRound: session.currentRound,
+                currentPhase: session.currentPhase,
+                phaseStartTime: session.phaseStartTime,
+                phaseDuration: matchmakingService.PHASE_DURATIONS[session.currentPhase] || 60,
+            },
+            stats,
         });
     } catch (error) {
         console.error('Error getting next partner:', error);

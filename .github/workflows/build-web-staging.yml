@@ -1,0 +1,39 @@
+name: Build Web App Staging
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  build-web:
+    name: Build Web App for Staging
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Clean install dependencies
+        run: |
+          npm ci
+
+      - name: Build React app for staging
+        run: |
+          npm run web:build:staging
+
+      - name: Build summary
+        run: |
+          echo "## 🌐 Web App Staging Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: develop" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: Staging (staging.slushdating.com)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Type**: Web App (Capacitor removed)" >> $GITHUB_STEP_SUMMARY

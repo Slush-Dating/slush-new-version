@@ -27,46 +27,26 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
       - name: Clean install dependencies
         run: |
           rm -rf node_modules package-lock.json
-          npm install
+          npm ci
 
-      - name: Build React app for staging
+      - name: Build for iOS (Expo EAS)
         run: |
-          cd apps/web
-          npm run build:staging
-
-      - name: Sync with Capacitor iOS (staging)
-        run: |
-          cd apps/web
-          CAPACITOR_HOSTNAME=staging.slushdating.com npx cap sync ios
+          cd apps/native
+          eas build --platform ios --profile preview --non-interactive
         env:
-          CAPACITOR_HOSTNAME: staging.slushdating.com
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Setup Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-
-      - name: Build iOS app
-        if: github.event.inputs.build_ipa == 'true' || github.event_name == 'push'
-        run: |
-          cd apps/web/ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive
-
-      - name: Create IPA for TestFlight
-        if: github.event.inputs.build_ipa == 'true'
-        run: |
-          cd apps/web/ios/App
-          xcodebuild -exportArchive -archivePath build/App.xcarchive -exportOptionsPlist exportOptions.plist -exportPath build/
-
-      - name: Upload IPA artifact
-        if: github.event.inputs.build_ipa == 'true'
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: slush-ios-staging-${{ github.sha }}
-          path: apps/web/ios/App/build/App.ipa
+          name: slush-native-ios-staging-${{ github.sha }}
+          path: apps/native/build/
           retention-days: 30
 
       - name: Build summary

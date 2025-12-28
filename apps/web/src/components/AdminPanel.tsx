@@ -9,12 +9,23 @@ export const AdminPanel: React.FC = () => {
     const [activeView, setActiveView] = useState<'dashboard' | 'events' | 'users' | 'reports' | 'system'>('dashboard');
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [adminUser, setAdminUser] = useState<any>(null);
+    const [sessionExpired, setSessionExpired] = useState(false);
+
+    // Handle authentication errors (401) - auto logout
+    const handleAuthError = () => {
+        console.log('🔒 Admin session expired or invalid - logging out');
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminUser');
+        setIsAuthenticated(false);
+        setAdminUser(null);
+        setSessionExpired(true);
+    };
 
     // Check admin authentication on mount
     useEffect(() => {
         const adminToken = localStorage.getItem('adminToken');
         const adminUserData = localStorage.getItem('adminUser');
-        
+
         if (adminToken && adminUserData) {
             try {
                 const user = JSON.parse(adminUserData);
@@ -38,6 +49,7 @@ export const AdminPanel: React.FC = () => {
         localStorage.setItem('adminUser', JSON.stringify(data.user));
         setIsAuthenticated(true);
         setAdminUser(data.user);
+        setSessionExpired(false); // Clear session expired flag on login
     };
 
     const handleLogout = () => {
@@ -47,9 +59,38 @@ export const AdminPanel: React.FC = () => {
         setAdminUser(null);
     };
 
+    // Enhanced fetch wrapper that handles 401 errors
+    // NOTE: All child components can use this to make authenticated API calls
+    // Example usage: const response = await fetchWithAuth(url, { method: 'POST', body: JSON.stringify(data) });
+    // This automatically adds admin token and handles session expiration
+    const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+        const adminToken = localStorage.getItem('adminToken');
+        if (!adminToken) {
+            handleAuthError();
+            throw new Error('No admin token found');
+        }
+
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                ...options.headers,
+                'Authorization': `Bearer ${adminToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        // Handle 401 Unauthorized - token expired or invalid
+        if (response.status === 401) {
+            handleAuthError();
+            throw new Error('Session expired');
+        }
+
+        return response;
+    };
+
     // Show login if not authenticated
     if (!isAuthenticated) {
-        return <AdminLogin onLogin={handleAdminLogin} />;
+        return <AdminLogin onLogin={handleAdminLogin} sessionExpired={sessionExpired} />;
     }
 
     return (
@@ -216,7 +257,7 @@ const EventUpload = () => {
 
             const apiUrl = `${getApiBaseUrl()}/admin/events`;
             console.log('🔗 Fetching events from:', apiUrl);
-            
+
             const response = await fetch(apiUrl, {
                 method: 'GET',
                 headers: {
@@ -224,15 +265,15 @@ const EventUpload = () => {
                     'Authorization': `Bearer ${adminToken}`
                 }
             });
-            
+
             console.log('📡 Response status:', response.status, response.statusText);
-            
+
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('❌ Error response:', errorText);
                 throw new Error(`Failed to fetch events: ${response.status} ${response.statusText}`);
             }
-            
+
             const data = await response.json();
             console.log('✅ Events fetched:', data);
             setEvents(data.events || []);
@@ -259,7 +300,7 @@ const EventUpload = () => {
 
             const apiUrl = `${getApiBaseUrl()}/admin/events/${eventId}/stats`;
             console.log('🔗 Fetching event details from:', apiUrl);
-            
+
             const response = await fetch(apiUrl, {
                 method: 'GET',
                 headers: {
@@ -267,11 +308,11 @@ const EventUpload = () => {
                     'Authorization': `Bearer ${adminToken}`
                 }
             });
-            
+
             if (!response.ok) {
                 throw new Error(`Failed to fetch event details: ${response.status} ${response.statusText}`);
             }
-            
+
             const data = await response.json();
             setSelectedEvent(data);
         } catch (err) {
@@ -294,7 +335,7 @@ const EventUpload = () => {
 
         try {
             const adminToken = localStorage.getItem('adminToken');
-            
+
             // Check if admin token exists
             if (!adminToken) {
                 throw new Error('No admin authentication token found. Please log in first.');
@@ -318,12 +359,12 @@ const EventUpload = () => {
                     // If response is not JSON, use status text
                     errorMessage = response.statusText || errorMessage;
                 }
-                
+
                 // Provide more specific error messages
                 if (response.status === 401) {
                     errorMessage = 'Authentication failed. Your session may have expired. Please log in again.';
                 }
-                
+
                 throw new Error(errorMessage);
             }
 
@@ -384,7 +425,7 @@ const EventUpload = () => {
 
             const apiUrl = `${getApiBaseUrl()}/events`;
             console.log('🔗 Creating event at:', apiUrl);
-            
+
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
@@ -447,7 +488,7 @@ const EventUpload = () => {
 
             const apiUrl = `${getApiBaseUrl()}/events/${id}`;
             console.log('🔗 Deleting event at:', apiUrl);
-            
+
             const response = await fetch(apiUrl, {
                 method: 'DELETE',
                 headers: {
@@ -958,7 +999,7 @@ const UserManagement = () => {
 
             const response = await fetch(`${getApiBaseUrl()}/admin/users/${userId}/status`, {
                 method: 'PUT',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${adminToken}`
                 },
@@ -1407,7 +1448,7 @@ const ReportsManagement = () => {
 
             const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportId}`, {
                 method: 'PUT',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${adminToken}`
                 },

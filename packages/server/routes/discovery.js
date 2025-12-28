@@ -163,9 +163,19 @@ router.get('/feed', authenticate, async (req, res) => {
                 }
             }
 
-            // All users are in Sheffield for testing
-            const distance = 'Nearby';
-            const locationString = 'Sheffield, UK';
+            // Get location string from user data
+            let locationString = 'Location not set';
+            if (user.location) {
+                if (user.location.locationString) {
+                    locationString = user.location.locationString;
+                } else if (user.location.city) {
+                    const parts = [user.location.city];
+                    if (user.location.state) parts.push(user.location.state);
+                    if (user.location.country) parts.push(user.location.country);
+                    locationString = parts.join(', ');
+                }
+            }
+            const distance = 'Nearby'; // TODO: Calculate actual distance when both users have location
 
             // Get video URL - prefer compressed version if available
             let videoUrl = null;
@@ -439,6 +449,19 @@ router.get('/event-partners', authenticate, async (req, res) => {
                 }
             }
 
+            // Get location string from user data
+            let locationString = 'Location not set';
+            if (user.location) {
+                if (user.location.locationString) {
+                    locationString = user.location.locationString;
+                } else if (user.location.city) {
+                    const parts = [user.location.city];
+                    if (user.location.state) parts.push(user.location.state);
+                    if (user.location.country) parts.push(user.location.country);
+                    locationString = parts.join(', ');
+                }
+            }
+
             return {
                 id: user._id.toString(),
                 userId: user._id.toString(),
@@ -448,7 +471,7 @@ router.get('/event-partners', authenticate, async (req, res) => {
                 imageUrl: user.photos && user.photos.length > 0 ? user.photos[0] : null,
                 videoUrl: user.videos && user.videos.length > 0 ? user.videos[0] : null,
                 thumbnail: user.photos && user.photos.length > 0 ? user.photos[0] : null,
-                locationString: 'Sheffield, UK',
+                locationString: locationString,
                 photos: user.photos || [],
                 interests: user.interests || []
             };

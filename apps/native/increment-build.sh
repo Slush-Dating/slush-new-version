@@ -26,7 +26,15 @@ fi
 
 # Get current build number
 CURRENT_BUILD=$(grep -A 2 '<key>CFBundleVersion</key>' ios/SlushDating/Info.plist | grep '<string>' | sed 's/.*<string>\([^<]*\)<\/string>.*/\1/')
-NEW_BUILD=$((CURRENT_BUILD + 1))
+
+# Check if a target build number was provided as argument
+if [[ $# -eq 1 ]]; then
+    NEW_BUILD=$1
+    print_status "Setting build number to: $NEW_BUILD (from argument)"
+else
+    NEW_BUILD=$((CURRENT_BUILD + 1))
+    print_status "Incrementing build number: $CURRENT_BUILD → $NEW_BUILD"
+fi
 
 print_status "Incrementing build number: $CURRENT_BUILD → $NEW_BUILD"
 
@@ -41,3 +49,4 @@ fi
 
 print_success "Build number updated to $NEW_BUILD"
 print_status "Ready for TestFlight build!"
+print_status "You can now build with: eas build --platform ios --profile production"

@@ -36,6 +36,23 @@ const userSchema = new mongoose.Schema({
         coordinates: {
             type: [Number],
             default: [0, 0]
+        },
+        // Human-readable location fields
+        city: {
+            type: String,
+            trim: true
+        },
+        state: {
+            type: String,
+            trim: true
+        },
+        country: {
+            type: String,
+            trim: true
+        },
+        locationString: {
+            type: String,
+            trim: true
         }
     },
     bio: {

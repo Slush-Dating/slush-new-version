@@ -340,9 +340,36 @@ router.put('/onboarding', async (req, res) => {
             delete updates.finalStep;
         }
 
+        // Handle location data if provided
+        if (updates.location) {
+            // Ensure proper GeoJSON structure
+            if (updates.location.coordinates && Array.isArray(updates.location.coordinates)) {
+                updates.location.type = 'Point';
+            }
+            // Generate locationString if not provided
+            if (!updates.location.locationString && updates.location.city) {
+                const parts = [updates.location.city];
+                if (updates.location.state) parts.push(updates.location.state);
+                if (updates.location.country) parts.push(updates.location.country);
+                updates.location.locationString = parts.join(', ');
+            }
+        }
+
         const user = await User.findByIdAndUpdate(userId, { $set: updates }, { new: true });
 
-        // Add locationString
+        // Build location string from user data
+        let locationString = 'Location not set';
+        if (user.location) {
+            if (user.location.locationString) {
+                locationString = user.location.locationString;
+            } else if (user.location.city) {
+                const parts = [user.location.city];
+                if (user.location.state) parts.push(user.location.state);
+                if (user.location.country) parts.push(user.location.country);
+                locationString = parts.join(', ');
+            }
+        }
+
         const userObj = {
             id: user._id,
             email: user.email,
@@ -355,10 +382,8 @@ router.put('/onboarding', async (req, res) => {
             interests: user.interests,
             photos: user.photos,
             videos: user.videos,
-            interests: user.interests,
-            photos: user.photos,
-            videos: user.videos,
-            locationString: 'Sheffield, UK',
+            location: user.location,
+            locationString: locationString,
             isPremium: user.isPremium
         };
 
@@ -404,18 +429,22 @@ router.get('/profile', async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Convert location coordinates to readable string
+        // Convert location to readable string
         const userObj = user.toObject();
-        if (userObj.location && userObj.location.coordinates) {
-            // Check if coordinates match Sheffield (for now, all users are in Sheffield)
-            const [lon, lat] = userObj.location.coordinates;
-            if (Math.abs(lon - (-1.4701)) < 0.01 && Math.abs(lat - 53.3811) < 0.01) {
-                userObj.locationString = 'Sheffield, UK';
+        if (userObj.location) {
+            // Use stored locationString if available, otherwise build from parts
+            if (userObj.location.locationString) {
+                userObj.locationString = userObj.location.locationString;
+            } else if (userObj.location.city) {
+                const parts = [userObj.location.city];
+                if (userObj.location.state) parts.push(userObj.location.state);
+                if (userObj.location.country) parts.push(userObj.location.country);
+                userObj.locationString = parts.join(', ');
             } else {
-                userObj.locationString = 'Sheffield, UK'; // Default for testing
+                userObj.locationString = 'Location not set';
             }
         } else {
-            userObj.locationString = 'Sheffield, UK';
+            userObj.locationString = 'Location not set';
         }
 
         // If no media, provide defaults
@@ -488,17 +517,22 @@ router.get('/profile/:userId', async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Convert location coordinates to readable string
+        // Convert location to readable string
         const userObj = user.toObject();
-        if (userObj.location && userObj.location.coordinates) {
-            const [lon, lat] = userObj.location.coordinates;
-            if (Math.abs(lon - (-1.4701)) < 0.01 && Math.abs(lat - 53.3811) < 0.01) {
-                userObj.locationString = 'Sheffield, UK';
+        if (userObj.location) {
+            // Use stored locationString if available, otherwise build from parts
+            if (userObj.location.locationString) {
+                userObj.locationString = userObj.location.locationString;
+            } else if (userObj.location.city) {
+                const parts = [userObj.location.city];
+                if (userObj.location.state) parts.push(userObj.location.state);
+                if (userObj.location.country) parts.push(userObj.location.country);
+                userObj.locationString = parts.join(', ');
             } else {
-                userObj.locationString = 'Sheffield, UK';
+                userObj.locationString = 'Location not set';
             }
         } else {
-            userObj.locationString = 'Sheffield, UK';
+            userObj.locationString = 'Location not set';
         }
 
         // If no media, provide defaults

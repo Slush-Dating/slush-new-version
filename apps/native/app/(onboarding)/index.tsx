@@ -3,7 +3,7 @@
  * Multi-step profile setup - restored from web version
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -29,23 +29,25 @@ import {
     Sparkles,
     Trash2,
     Play,
+    X,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Video as VideoCompressor } from 'react-native-compressor';
+import * as Location from 'expo-location';
 
 import { useAuth } from '../../hooks/useAuth';
 import { getApiBaseUrl, getAbsoluteMediaUrl } from '../../services/apiConfig';
 import * as authService from '../../services/authService';
 
 // Constants for file validation
-const MAX_VIDEO_SIZE_MB = 500; // Before compression
+const MAX_VIDEO_SIZE_MB = 100; // Without compression
 const MAX_IMAGE_SIZE_MB = 50;
 
 const STEPS = [
     { id: 'name-dob', title: 'Nice to meet you. What\'s your name?', subtitle: 'This is how you\'ll appear to others' },
     { id: 'preferences', title: 'Who are you looking for?', subtitle: 'Help us find your perfect match' },
+    { id: 'location', title: 'Where are you located?', subtitle: 'We\'ll use this to show you nearby matches' },
     { id: 'interests', title: 'What are you into?', subtitle: 'Select up to 6 interests to find your match' },
     { id: 'prompts', title: 'Let\'s break the ice', subtitle: 'Share something fun about yourself' },
     { id: 'media', title: 'Add your best shots', subtitle: 'Upload at least 1 photo and 1 video' },
@@ -70,9 +72,10 @@ const INTERESTS_OPTIONS = [
 ];
 
 export default function OnboardingScreen() {
-    const { completeOnboarding } = useAuth();
+    const { completeOnboarding, logout } = useAuth();
     const [currentStep, setCurrentStep] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
+    const [isRestoring, setIsRestoring] = useState(true);
 
     // Form data - matching web version structure
     const [name, setName] = useState('');
@@ -88,10 +91,96 @@ export default function OnboardingScreen() {
     const [videos, setVideos] = useState<{ url: string, thumbnailUrl?: string }[]>([]);
     const [uploadingSlots, setUploadingSlots] = useState<{ [key: string]: boolean }>({});
     const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
-    const [compressionProgress, setCompressionProgress] = useState<{ [key: string]: number }>({});
+
+    // Location state
+    const [userLocation, setUserLocation] = useState<{
+        coordinates: [number, number];
+        city: string;
+        state: string;
+        country: string;
+        locationString: string;
+    } | null>(null);
+    const [locationLoading, setLocationLoading] = useState(false);
+    const [locationError, setLocationError] = useState<string | null>(null);
 
     const step = STEPS[currentStep];
     const progress = (currentStep + 1) / STEPS.length;
+
+    // Restore saved onboarding state on mount
+    useEffect(() => {
+        const restoreState = async () => {
+            try {
+                const savedState = await authService.getOnboardingState();
+                if (savedState) {
+                    console.log('📂 Restoring onboarding state from step', savedState.currentStep);
+                    setCurrentStep(savedState.currentStep);
+                    setName(savedState.name || '');
+                    setDob(savedState.dob || '');
+                    setGender(savedState.gender || '');
+                    setInterestedIn(savedState.interestedIn || 'everyone');
+                    setInterests(savedState.interests || []);
+                    setPrompts(savedState.prompts || [
+                        { question: 'A life goal of mine is...', answer: '' },
+                        { question: 'My simple pleasures include...', answer: '' }
+                    ]);
+                    setPhotos(savedState.photos || []);
+                    setVideos(savedState.videos || []);
+                    setUserLocation(savedState.userLocation);
+                }
+            } catch (error) {
+                console.error('Failed to restore onboarding state:', error);
+            } finally {
+                setIsRestoring(false);
+            }
+        };
+        restoreState();
+    }, []);
+
+    // Save state whenever form data changes (debounced via step change)
+    useEffect(() => {
+        if (isRestoring) return; // Don't save while restoring
+
+        const saveState = async () => {
+            await authService.saveOnboardingState({
+                currentStep,
+                name,
+                dob,
+                gender,
+                interestedIn,
+                interests,
+                prompts,
+                photos,
+                videos,
+                userLocation,
+            });
+        };
+        saveState();
+    }, [currentStep, name, dob, gender, interestedIn, interests, prompts, photos, videos, userLocation, isRestoring]);
+
+    // Handle exit from onboarding
+    const handleExit = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        Alert.alert(
+            'Exit Onboarding?',
+            'Your progress will be saved. You can continue later by signing back in.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Exit',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            // State is already saved via useEffect
+                            // Just logout to return to sign-in
+                            await logout();
+                        } catch (error) {
+                            console.error('Exit failed:', error);
+                        }
+                    },
+                },
+            ]
+        );
+    };
 
     const canContinue = () => {
         switch (step.id) {
@@ -99,6 +188,8 @@ export default function OnboardingScreen() {
                 return name.trim().length >= 2 && dob.length === 10;
             case 'preferences':
                 return !!gender && !!interestedIn;
+            case 'location':
+                return userLocation !== null;
             case 'interests':
                 return interests.length >= 1;
             case 'prompts':
@@ -136,7 +227,17 @@ export default function OnboardingScreen() {
                     prompts,
                     photos,
                     videos: videos.map(v => v.url),
+                    location: userLocation ? {
+                        type: 'Point',
+                        coordinates: userLocation.coordinates,
+                        city: userLocation.city,
+                        state: userLocation.state,
+                        country: userLocation.country,
+                        locationString: userLocation.locationString,
+                    } : undefined,
                 });
+                // Clear saved onboarding state after successful completion
+                await authService.clearOnboardingState();
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (err) {
                 console.error('Onboarding failed:', err);
@@ -185,29 +286,7 @@ export default function OnboardingScreen() {
         return ext || 'jpg';
     };
 
-    // Compress video using react-native-compressor
-    const compressVideo = async (uri: string, slotKey: string): Promise<string> => {
-        try {
-            console.log('🔄 Starting video compression...');
-            const compressedUri = await VideoCompressor.compress(
-                uri,
-                {
-                    compressionMethod: 'auto',
-                    maxSize: 1280, // Max dimension
-                    minimumFileSizeForCompress: 5, // Only compress if > 5MB
-                },
-                (progress) => {
-                    setCompressionProgress(prev => ({ ...prev, [slotKey]: progress }));
-                    console.log(`📊 Compression progress: ${Math.round(progress * 100)}%`);
-                }
-            );
-            console.log('✅ Video compression complete:', compressedUri);
-            return compressedUri;
-        } catch (error) {
-            console.warn('⚠️ Video compression failed, using original:', error);
-            return uri;
-        }
-    };
+
 
     // Upload file with progress tracking
     const uploadFile = async (
@@ -240,11 +319,8 @@ export default function OnboardingScreen() {
 
                 console.log(`📤 Uploading ${fileType}: ${Math.round(fileSizeMB)}MB`);
 
-                // Compress videos before upload
-                let finalUri = fileUri;
-                if (fileType === 'video') {
-                    finalUri = await compressVideo(fileUri, slotKey);
-                }
+                // Use original URI (no compression for Expo Go compatibility)
+                const finalUri = fileUri;
 
                 // Create FormData
                 const formData = new FormData();
@@ -426,6 +502,92 @@ export default function OnboardingScreen() {
         );
     };
 
+    // Request user location and reverse geocode
+    const requestLocation = async () => {
+        setLocationLoading(true);
+        setLocationError(null);
+
+        try {
+            // Request permission
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                setLocationError('Permission to access location was denied. Please enable it in Settings.');
+                setLocationLoading(false);
+                return;
+            }
+
+            // Get current position
+            const position = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced,
+            });
+
+            const { latitude, longitude } = position.coords;
+
+            // Reverse geocode using OpenStreetMap Nominatim (free API)
+            try {
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10`,
+                    {
+                        headers: {
+                            'User-Agent': 'SlushDatingApp/1.0',
+                        },
+                    }
+                );
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const address = data.address || {};
+
+                    const city = address.city || address.town || address.village || address.municipality || '';
+                    const state = address.state || address.county || '';
+                    const country = address.country || '';
+
+                    // Build location string
+                    const parts = [];
+                    if (city) parts.push(city);
+                    if (state) parts.push(state);
+                    if (country) parts.push(country);
+                    const locationString = parts.join(', ') || 'Unknown Location';
+
+                    setUserLocation({
+                        coordinates: [longitude, latitude], // GeoJSON format: [lng, lat]
+                        city,
+                        state,
+                        country,
+                        locationString,
+                    });
+
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                } else {
+                    // Fallback: use coordinates without reverse geocoding
+                    setUserLocation({
+                        coordinates: [longitude, latitude],
+                        city: '',
+                        state: '',
+                        country: '',
+                        locationString: 'Location set',
+                    });
+                }
+            } catch (geocodeError) {
+                console.warn('Reverse geocoding failed:', geocodeError);
+                // Fallback: use coordinates without reverse geocoding
+                setUserLocation({
+                    coordinates: [longitude, latitude],
+                    city: '',
+                    state: '',
+                    country: '',
+                    locationString: 'Location set',
+                });
+            }
+        } catch (error: any) {
+            console.error('Location error:', error);
+            setLocationError(error.message || 'Failed to get location. Please try again.');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        } finally {
+            setLocationLoading(false);
+        }
+    };
+
 
     const renderStepContent = () => {
         switch (step.id) {
@@ -513,6 +675,55 @@ export default function OnboardingScreen() {
                                 ))}
                             </View>
                         </View>
+                    </View>
+                );
+
+            case 'location':
+                return (
+                    <View style={styles.locationWrapper}>
+                        {userLocation ? (
+                            <View style={styles.locationSuccess}>
+                                <View style={styles.locationIconCircle}>
+                                    <MapPin size={32} color="#22c55e" />
+                                </View>
+                                <Text style={styles.locationCity}>{userLocation.locationString}</Text>
+                                <Text style={styles.locationSuccessText}>Location set successfully!</Text>
+                                <TouchableOpacity
+                                    style={styles.locationChangeButton}
+                                    onPress={requestLocation}
+                                    disabled={locationLoading}
+                                >
+                                    <Text style={styles.locationChangeText}>Update Location</Text>
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
+                            <View style={styles.locationPrompt}>
+                                <View style={styles.locationIconCircle}>
+                                    <MapPin size={32} color="#3B82F6" />
+                                </View>
+                                <Text style={styles.locationTitle}>Enable Location</Text>
+                                <Text style={styles.locationSubtitle}>
+                                    We'll use your location to show you nearby matches and events.
+                                </Text>
+                                {locationError && (
+                                    <Text style={styles.locationError}>{locationError}</Text>
+                                )}
+                                <TouchableOpacity
+                                    style={[styles.locationButton, locationLoading && styles.locationButtonDisabled]}
+                                    onPress={requestLocation}
+                                    disabled={locationLoading}
+                                >
+                                    {locationLoading ? (
+                                        <ActivityIndicator color="#ffffff" size="small" />
+                                    ) : (
+                                        <>
+                                            <MapPin size={20} color="#ffffff" />
+                                            <Text style={styles.locationButtonText}>Allow Location Access</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        )}
                     </View>
                 );
 
@@ -615,7 +826,6 @@ export default function OnboardingScreen() {
                             <View style={styles.photosGrid}>
                                 {Array.from({ length: 2 }).map((_, index) => {
                                     const slotKey = `video-${index}`;
-                                    const compProgress = compressionProgress[slotKey];
                                     const upProgress = uploadProgress[slotKey];
                                     return (
                                         <TouchableOpacity
@@ -627,11 +837,9 @@ export default function OnboardingScreen() {
                                                 <View style={styles.loadingOverlay}>
                                                     <ActivityIndicator color="#3B82F6" />
                                                     <Text style={styles.loadingText}>
-                                                        {compProgress && compProgress < 1
-                                                            ? `Compressing: ${Math.round(compProgress * 100)}%`
-                                                            : upProgress
-                                                                ? `Uploading: ${Math.round(upProgress * 100)}%`
-                                                                : 'Processing...'
+                                                        {upProgress
+                                                            ? `Uploading: ${Math.round(upProgress * 100)}%`
+                                                            : 'Uploading...'
                                                         }
                                                     </Text>
                                                 </View>
@@ -686,10 +894,12 @@ export default function OnboardingScreen() {
                 >
                     {/* Header */}
                     <View style={styles.header}>
-                        {currentStep > 0 && (
+                        {currentStep > 0 ? (
                             <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-                                <ChevronLeft size={24} color="#ffffff" />
+                                <ChevronLeft size={24} color="#64748b" />
                             </TouchableOpacity>
+                        ) : (
+                            <View style={styles.backButton} />
                         )}
                         <View style={styles.progressContainer}>
                             <View style={styles.progressBar}>
@@ -701,6 +911,9 @@ export default function OnboardingScreen() {
                                 {currentStep + 1} of {STEPS.length}
                             </Text>
                         </View>
+                        <TouchableOpacity onPress={handleExit} style={styles.exitButton}>
+                            <X size={24} color="#64748b" />
+                        </TouchableOpacity>
                     </View>
 
                     <ScrollView
@@ -775,6 +988,14 @@ const styles = StyleSheet.create({
         gap: 16,
     },
     backButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0, 0, 0, 0.05)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    exitButton: {
         width: 44,
         height: 44,
         borderRadius: 22,
@@ -888,15 +1109,59 @@ const styles = StyleSheet.create({
     locationWrapper: {
         alignItems: 'center',
         paddingVertical: 40,
+        paddingHorizontal: 20,
     },
-    locationButton: {
+    locationPrompt: {
         alignItems: 'center',
         gap: 16,
     },
+    locationIconCircle: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: '#F0F9FF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    locationTitle: {
+        fontSize: 22,
+        fontWeight: '600',
+        color: '#1A202C',
+        textAlign: 'center',
+    },
+    locationSubtitle: {
+        fontSize: 15,
+        color: '#64748b',
+        textAlign: 'center',
+        lineHeight: 22,
+        paddingHorizontal: 20,
+    },
+    locationError: {
+        fontSize: 14,
+        color: '#ef4444',
+        textAlign: 'center',
+        marginTop: 8,
+    },
+    locationButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: '#3B82F6',
+        paddingVertical: 16,
+        paddingHorizontal: 32,
+        borderRadius: 16,
+        marginTop: 16,
+        minWidth: 220,
+    },
+    locationButtonDisabled: {
+        opacity: 0.6,
+    },
     locationButtonText: {
-        fontSize: 18,
-        fontWeight: '500',
-        color: '#3B82F6',
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#ffffff',
     },
     locationSuccess: {
         alignItems: 'center',
@@ -905,7 +1170,21 @@ const styles = StyleSheet.create({
     locationCity: {
         fontSize: 24,
         fontWeight: '600',
-        color: '#ffffff',
+        color: '#1A202C',
+    },
+    locationSuccessText: {
+        fontSize: 14,
+        color: '#22c55e',
+    },
+    locationChangeButton: {
+        marginTop: 16,
+        paddingVertical: 12,
+        paddingHorizontal: 24,
+    },
+    locationChangeText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#3B82F6',
     },
     locationText: {
         fontSize: 14,

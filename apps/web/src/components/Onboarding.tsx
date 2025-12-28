@@ -3,38 +3,38 @@ import React, { useState } from 'react';
 import { authService } from '../services/authService';
 import { getMediaBaseUrl } from '../services/apiConfig';
 import { getVideoFileMetadata } from '../utils/mediaUtils';
-import { ChevronRight, ChevronLeft, Camera, Sparkles, Check } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Camera, Sparkles, Check, MapPin, Loader } from 'lucide-react';
 import './Onboarding.css';
 
 // Add error boundary wrapper to catch any rendering errors
-class OnboardingErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
-  constructor(props: {children: React.ReactNode}) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    console.error('Onboarding Error Boundary caught error:', error);
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Onboarding component error:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{padding: '20px', color: 'red', textAlign: 'center'}}>
-          <h2>Onboarding Error</h2>
-          <p>There was an error loading the onboarding component. Please refresh the page.</p>
-          <button onClick={() => window.location.reload()}>Refresh Page</button>
-        </div>
-      );
+class OnboardingErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+    constructor(props: { children: React.ReactNode }) {
+        super(props);
+        this.state = { hasError: false };
     }
 
-    return this.props.children;
-  }
+    static getDerivedStateFromError(error: Error) {
+        console.error('Onboarding Error Boundary caught error:', error);
+        return { hasError: true };
+    }
+
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+        console.error('Onboarding component error:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{ padding: '20px', color: 'red', textAlign: 'center' }}>
+                    <h2>Onboarding Error</h2>
+                    <p>There was an error loading the onboarding component. Please refresh the page.</p>
+                    <button onClick={() => window.location.reload()}>Refresh Page</button>
+                </div>
+            );
+        }
+
+        return this.props.children;
+    }
 }
 
 interface OnboardingProps {
@@ -67,6 +67,109 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
     });
     const [uploading, setUploading] = useState<string | null>(null);
     const [validating, setValidating] = useState<string | null>(null);
+
+    // Location state
+    const [userLocation, setUserLocation] = useState<{
+        coordinates: [number, number];
+        city: string;
+        state: string;
+        country: string;
+        locationString: string;
+    } | null>(null);
+    const [locationLoading, setLocationLoading] = useState(false);
+    const [locationError, setLocationError] = useState<string | null>(null);
+
+    // Request user location and reverse geocode
+    const requestLocation = async () => {
+        setLocationLoading(true);
+        setLocationError(null);
+
+        if (!navigator.geolocation) {
+            setLocationError('Geolocation is not supported by your browser.');
+            setLocationLoading(false);
+            return;
+        }
+
+        try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: false,
+                    timeout: 10000,
+                    maximumAge: 300000 // 5 minutes
+                });
+            });
+
+            const { latitude, longitude } = position.coords;
+
+            // Reverse geocode using OpenStreetMap Nominatim (free API)
+            try {
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10`,
+                    {
+                        headers: {
+                            'User-Agent': 'SlushDatingApp/1.0',
+                        },
+                    }
+                );
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const address = data.address || {};
+
+                    const city = address.city || address.town || address.village || address.municipality || '';
+                    const state = address.state || address.county || '';
+                    const country = address.country || '';
+
+                    // Build location string
+                    const parts: string[] = [];
+                    if (city) parts.push(city);
+                    if (state) parts.push(state);
+                    if (country) parts.push(country);
+                    const locationString = parts.join(', ') || 'Unknown Location';
+
+                    setUserLocation({
+                        coordinates: [longitude, latitude], // GeoJSON format: [lng, lat]
+                        city,
+                        state,
+                        country,
+                        locationString,
+                    });
+                } else {
+                    // Fallback: use coordinates without reverse geocoding
+                    setUserLocation({
+                        coordinates: [longitude, latitude],
+                        city: '',
+                        state: '',
+                        country: '',
+                        locationString: 'Location set',
+                    });
+                }
+            } catch (geocodeError) {
+                console.warn('Reverse geocoding failed:', geocodeError);
+                // Fallback: use coordinates without reverse geocoding
+                setUserLocation({
+                    coordinates: [longitude, latitude],
+                    city: '',
+                    state: '',
+                    country: '',
+                    locationString: 'Location set',
+                });
+            }
+        } catch (error: any) {
+            console.error('Location error:', error);
+            let errorMessage = 'Failed to get location. Please try again.';
+            if (error.code === 1) {
+                errorMessage = 'Location permission denied. Please enable location access in your browser settings.';
+            } else if (error.code === 2) {
+                errorMessage = 'Unable to determine your location. Please try again.';
+            } else if (error.code === 3) {
+                errorMessage = 'Location request timed out. Please try again.';
+            }
+            setLocationError(errorMessage);
+        } finally {
+            setLocationLoading(false);
+        }
+    };
 
     // Validate video URL is accessible and playable
     const validateVideoUrl = (url: string): Promise<boolean> => {
@@ -256,7 +359,15 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
             const submitData = final ? {
                 ...formData,
                 bio: formData.prompts.map(p => p.answer).filter(a => a.trim()).join('\n\n'),
-                finalStep: final
+                finalStep: final,
+                location: userLocation ? {
+                    type: 'Point',
+                    coordinates: userLocation.coordinates,
+                    city: userLocation.city,
+                    state: userLocation.state,
+                    country: userLocation.country,
+                    locationString: userLocation.locationString,
+                } : undefined,
             } : {
                 ...formData,
                 finalStep: final
@@ -350,6 +461,68 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
                         key="step3"
                         className="onboarding-step"
                     >
+                        <h2 className="onboarding-title">Where are you <br />located?</h2>
+                        <p className="onboarding-hint">We'll use this to show you nearby matches and events.</p>
+                        <div className="location-wrapper">
+                            {userLocation ? (
+                                <div className="location-success">
+                                    <div className="location-icon-circle success">
+                                        <MapPin size={32} />
+                                    </div>
+                                    <p className="location-city">{userLocation.locationString}</p>
+                                    <p className="location-success-text">Location set successfully!</p>
+                                    <button
+                                        className="location-change-btn"
+                                        onClick={requestLocation}
+                                        disabled={locationLoading}
+                                    >
+                                        Update Location
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="location-prompt">
+                                    <div className="location-icon-circle">
+                                        <MapPin size={32} />
+                                    </div>
+                                    <p className="location-title">Enable Location</p>
+                                    <p className="location-subtitle">
+                                        We'll use your location to show you nearby matches and events.
+                                    </p>
+                                    {locationError && (
+                                        <p className="location-error">{locationError}</p>
+                                    )}
+                                    <button
+                                        className={`location-btn ${locationLoading ? 'loading' : ''}`}
+                                        onClick={requestLocation}
+                                        disabled={locationLoading}
+                                    >
+                                        {locationLoading ? (
+                                            <><Loader size={20} className="spinner" /> Getting Location...</>
+                                        ) : (
+                                            <><MapPin size={20} /> Allow Location Access</>
+                                        )}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        <div className="onboarding-nav">
+                            <button className="back-btn" onClick={prevStep}><ChevronLeft size={24} /></button>
+                            <button
+                                className="auth-submit-btn"
+                                onClick={() => handleUpdate()}
+                                disabled={!userLocation}
+                            >
+                                Continue
+                            </button>
+                        </div>
+                    </div>
+                );
+            case 4:
+                return (
+                    <div
+                        key="step4"
+                        className="onboarding-step"
+                    >
                         <h2 className="onboarding-title">What are you <br />into?</h2>
                         <p className="onboarding-hint">Select up to 6 interests to find your match.</p>
                         <div className="interests-grid">
@@ -372,10 +545,10 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
                         </div>
                     </div>
                 );
-            case 4:
+            case 5:
                 return (
                     <div
-                        key="step4"
+                        key="step5"
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Let's break <br />the ice.</h2>
@@ -411,7 +584,7 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
                         </div>
                     </div>
                 );
-            case 5:
+            case 6:
                 return (
                     <div
                         key="step5"
@@ -531,7 +704,7 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
                     <div className="progress-bar">
                         <div
                             className="progress-fill"
-                            style={{ width: `${(step / 5) * 100}%`, transition: 'width 0.5s ease-out' }}
+                            style={{ width: `${(step / 6) * 100}%`, transition: 'width 0.5s ease-out' }}
                         />
                     </div>
                 </div>

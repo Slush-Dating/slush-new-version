@@ -6,19 +6,20 @@ import './AdminLogin.css';
 
 interface AdminLoginProps {
     onLogin: (data: { token: string; user: any }) => void;
+    sessionExpired?: boolean;
 }
 
-export function AdminLogin({ onLogin }: AdminLoginProps) {
+export function AdminLogin({ onLogin, sessionExpired }: AdminLoginProps) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
+    const [error, setError] = useState(sessionExpired ? 'Your admin session has expired. Please log in again.' : '');
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
         setLoading(true);
-        
+
         try {
             const apiUrl = `${getApiBaseUrl()}/auth/admin/login`;
             const response = await fetch(apiUrl, {
@@ -36,13 +37,13 @@ export function AdminLogin({ onLogin }: AdminLoginProps) {
             onLogin(data);
         } catch (err: any) {
             let errorMessage = err.message || 'Admin login failed';
-            
-            if (err.message?.includes('Failed to fetch') || 
+
+            if (err.message?.includes('Failed to fetch') ||
                 err.message?.includes('NetworkError') ||
                 err.message?.includes('Network request failed')) {
                 errorMessage = 'Unable to connect to server. Please check your network connection.';
             }
-            
+
             setError(errorMessage);
             console.error('Admin login error:', err);
         } finally {

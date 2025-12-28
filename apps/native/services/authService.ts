@@ -18,6 +18,7 @@ try {
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
+const ONBOARDING_STATE_KEY = 'onboarding_state';
 
 // Web-compatible storage functions
 const getWebStorage = () => {
@@ -53,6 +54,9 @@ export interface User {
         type: string;
         coordinates: number[];
         city?: string;
+        state?: string;
+        country?: string;
+        locationString?: string;
     };
 }
 
@@ -460,6 +464,111 @@ export const getCurrentProfile = async (): Promise<User> => {
     return user;
 };
 
+/**
+ * Onboarding state interface for persistence
+ */
+export interface OnboardingState {
+    currentStep: number;
+    name: string;
+    dob: string;
+    gender: string;
+    interestedIn: string;
+    interests: string[];
+    prompts: Array<{ question: string; answer: string }>;
+    photos: string[];
+    videos: Array<{ url: string; thumbnailUrl?: string }>;
+    userLocation: {
+        coordinates: [number, number];
+        city: string;
+        state: string;
+        country: string;
+        locationString: string;
+    } | null;
+}
+
+/**
+ * Save onboarding state for later resume
+ */
+export const saveOnboardingState = async (state: OnboardingState): Promise<void> => {
+    try {
+        const stateJson = JSON.stringify(state);
+        if (isWeb) {
+            const storage = getWebStorage();
+            if (storage) {
+                storage.setItem(ONBOARDING_STATE_KEY, stateJson);
+                return;
+            }
+            throw new Error('Web storage not available');
+        }
+        if (!SecureStore) {
+            const storage = getWebStorage();
+            if (storage) {
+                storage.setItem(ONBOARDING_STATE_KEY, stateJson);
+                return;
+            }
+            throw new Error('Storage not available');
+        }
+        await SecureStore.setItemAsync(ONBOARDING_STATE_KEY, stateJson);
+        console.log('💾 Onboarding state saved at step', state.currentStep);
+    } catch (error) {
+        console.error('Failed to save onboarding state:', error);
+    }
+};
+
+/**
+ * Get saved onboarding state
+ */
+export const getOnboardingState = async (): Promise<OnboardingState | null> => {
+    try {
+        let stateJson: string | null = null;
+        if (isWeb) {
+            const storage = getWebStorage();
+            stateJson = storage ? storage.getItem(ONBOARDING_STATE_KEY) : null;
+        } else {
+            if (!SecureStore) {
+                const storage = getWebStorage();
+                stateJson = storage ? storage.getItem(ONBOARDING_STATE_KEY) : null;
+            } else {
+                stateJson = await SecureStore.getItemAsync(ONBOARDING_STATE_KEY);
+            }
+        }
+        if (stateJson) {
+            console.log('📂 Onboarding state found');
+            return JSON.parse(stateJson);
+        }
+        return null;
+    } catch (error) {
+        console.error('Failed to get onboarding state:', error);
+        return null;
+    }
+};
+
+/**
+ * Clear onboarding state (call after completing onboarding)
+ */
+export const clearOnboardingState = async (): Promise<void> => {
+    try {
+        if (isWeb) {
+            const storage = getWebStorage();
+            if (storage) {
+                storage.removeItem(ONBOARDING_STATE_KEY);
+                return;
+            }
+        }
+        if (!SecureStore) {
+            const storage = getWebStorage();
+            if (storage) {
+                storage.removeItem(ONBOARDING_STATE_KEY);
+            }
+            return;
+        }
+        await SecureStore.deleteItemAsync(ONBOARDING_STATE_KEY);
+        console.log('🗑️ Onboarding state cleared');
+    } catch (error) {
+        console.error('Failed to clear onboarding state:', error);
+    }
+};
+
 export default {
     getToken,
     saveToken,
@@ -475,4 +584,7 @@ export default {
     updateProfile,
     completeOnboarding,
     getCurrentProfile,
+    saveOnboardingState,
+    getOnboardingState,
+    clearOnboardingState,
 };

@@ -35,7 +35,7 @@ import {
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import * as Location from 'expo-location';
 
 import { useAuth } from '../../hooks/useAuth';
@@ -322,15 +322,24 @@ export default function OnboardingScreen() {
         }
     };
 
-    // Helper: Detect MIME type from file URI
-    const getMimeType = (uri: string, fileType: 'image' | 'video'): string => {
-        const extension = uri.split('.').pop()?.toLowerCase();
+    // Helper: Detect MIME type from file URI or asset info
+    const getMimeType = (uri: string, fileType: 'image' | 'video', assetMimeType?: string): string => {
+        // Use asset MIME type if available (more reliable)
+        if (assetMimeType) {
+            return assetMimeType;
+        }
+
+        // Fallback to extension-based detection
+        const extension = uri.split('.').pop()?.toLowerCase() || uri.split('?')[0].split('.').pop()?.toLowerCase();
+        
         if (fileType === 'video') {
             switch (extension) {
                 case 'mov': return 'video/quicktime';
                 case 'mp4': return 'video/mp4';
                 case 'm4v': return 'video/x-m4v';
                 case '3gp': return 'video/3gpp';
+                case 'avi': return 'video/x-msvideo';
+                case 'mkv': return 'video/x-matroska';
                 default: return 'video/mp4';
             }
         } else {
@@ -355,182 +364,361 @@ export default function OnboardingScreen() {
 
 
 
-    // Upload file with progress tracking
+    // Upload file with progress tracking - rebuilt for real device compatibility
     const uploadFile = async (
         fileUri: string,
         fileType: 'image' | 'video',
-        slotKey: string
+        slotKey: string,
+        assetMimeType?: string
     ): Promise<string | { url: string; thumbnailUrl?: string }> => {
-        return new Promise(async (resolve, reject) => {
-            try {
-                const API_BASE_URL = getApiBaseUrl();
-                const token = await authService.getToken();
+        try {
+            const API_BASE_URL = getApiBaseUrl();
+            const token = await authService.getToken();
 
-                if (!token) {
-                    throw new Error('Not authenticated');
+            if (!token) {
+                throw new Error('Not authenticated. Please log in again.');
+            }
+
+            // Normalise file URI for iOS/Android compatibility
+            // On iOS, file URIs might need special handling
+            let finalUri = fileUri;
+            if (Platform.OS === 'ios' && !fileUri.startsWith('file://') && !fileUri.startsWith('ph://') && !fileUri.startsWith('assets-library://')) {
+                // Ensure proper file:// prefix for iOS
+                if (!fileUri.startsWith('/')) {
+                    finalUri = `file://${fileUri}`;
+                } else {
+                    finalUri = `file://${fileUri}`;
                 }
+            }
 
-                // Get file info and validate size
-                const fileInfo = await FileSystem.getInfoAsync(fileUri);
-                if (!fileInfo.exists) {
-                    throw new Error('File does not exist');
+            // Get file info and validate size
+            const fileInfo = await FileSystem.getInfoAsync(finalUri);
+            if (!fileInfo.exists) {
+                // Try without file:// prefix if it failed
+                if (finalUri.startsWith('file://')) {
+                    const altUri = finalUri.replace('file://', '');
+                    const altInfo = await FileSystem.getInfoAsync(altUri);
+                    if (altInfo.exists) {
+                        finalUri = altUri;
+                    } else {
+                        throw new Error('File does not exist. Please try selecting the file again.');
+                    }
+                } else {
+                    throw new Error('File does not exist. Please try selecting the file again.');
                 }
+            }
 
-                // Note: fileInfo.size may not be available in all cases
-                const fileSizeMB = ((fileInfo as any).size || 0) / (1024 * 1024);
-                const maxSize = fileType === 'video' ? MAX_VIDEO_SIZE_MB : MAX_IMAGE_SIZE_MB;
+            // Get file size - handle cases where size might not be available
+            const fileSize = (fileInfo as any).size;
+            if (!fileSize || fileSize === 0) {
+                console.warn('⚠️ File size not available, proceeding with upload');
+            }
 
-                if (fileSizeMB > maxSize) {
-                    throw new Error(`File too large (${Math.round(fileSizeMB)}MB). Maximum size is ${maxSize}MB.`);
-                }
+            const fileSizeMB = fileSize ? fileSize / (1024 * 1024) : 0;
+            const maxSize = fileType === 'video' ? MAX_VIDEO_SIZE_MB : MAX_IMAGE_SIZE_MB;
 
-                console.log(`📤 Uploading ${fileType}: ${Math.round(fileSizeMB)}MB`);
+            if (fileSizeMB > maxSize) {
+                throw new Error(`File too large (${Math.round(fileSizeMB)}MB). Maximum size is ${maxSize}MB.`);
+            }
 
-                // Use original URI (no compression for Expo Go compatibility)
-                const finalUri = fileUri;
+            console.log(`📤 Uploading ${fileType}: ${fileSizeMB > 0 ? Math.round(fileSizeMB) + 'MB' : 'size unknown'}`);
 
-                // Create FormData
-                const formData = new FormData();
-                const mimeType = getMimeType(finalUri, fileType);
-                const extension = getFileExtension(finalUri);
+            // Determine MIME type more reliably (use provided or detect)
+            const mimeType = getMimeType(finalUri, fileType, assetMimeType);
+            const extension = getFileExtension(finalUri);
+            const fileName = `upload_${Date.now()}.${extension}`;
 
-                formData.append('file', {
-                    uri: finalUri,
-                    type: mimeType,
-                    name: `upload_${Date.now()}.${extension}`
-                } as any);
+            // Create FormData with proper format for React Native
+            const formData = new FormData();
+            
+            // For React Native, FormData file object needs specific format
+            // Use platform-specific URI handling
+            const fileData: any = {
+                uri: Platform.OS === 'ios' ? finalUri.replace('file://', '') : finalUri,
+                type: mimeType,
+                name: fileName,
+            };
 
-                // Use XMLHttpRequest for progress tracking
+            // On Android, keep the full URI
+            if (Platform.OS === 'android') {
+                fileData.uri = finalUri;
+            }
+
+            formData.append('file', fileData as any);
+
+            console.log(`📋 Upload details:`, {
+                uri: finalUri.substring(0, 50) + '...',
+                mimeType,
+                fileName,
+                platform: Platform.OS,
+            });
+
+            // Use XMLHttpRequest for progress tracking (more reliable than fetch)
+            return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
+                let hasResolved = false;
 
+                // Progress tracking
                 xhr.upload.addEventListener('progress', (event) => {
-                    if (event.lengthComputable) {
+                    if (event.lengthComputable && event.total > 0) {
                         const progress = event.loaded / event.total;
                         setUploadProgress(prev => ({ ...prev, [slotKey]: progress }));
                         console.log(`📊 Upload progress: ${Math.round(progress * 100)}%`);
                     }
                 });
 
+                // Success handler
                 xhr.addEventListener('load', () => {
+                    if (hasResolved) return;
+                    hasResolved = true;
+
                     if (xhr.status >= 200 && xhr.status < 300) {
                         try {
-                            const result = JSON.parse(xhr.responseText);
-                            console.log('✅ Upload success:', result);
+                            const responseText = xhr.responseText || xhr.response;
+                            const result = typeof responseText === 'string' ? JSON.parse(responseText) : responseText;
+                            
+                            console.log('✅ Upload success:', {
+                                url: result.url,
+                                type: result.type,
+                                hasThumbnail: !!result.thumbnailUrl,
+                            });
+
                             if (fileType === 'video') {
-                                resolve({ url: result.url, thumbnailUrl: result.thumbnailUrl });
+                                resolve({ 
+                                    url: result.url, 
+                                    thumbnailUrl: result.thumbnailUrl 
+                                });
                             } else {
-                                resolve(result.url);
+                                resolve(result.url || result.originalUrl);
                             }
-                        } catch (e) {
-                            reject(new Error('Invalid server response'));
+                        } catch (parseError) {
+                            console.error('❌ Failed to parse response:', parseError);
+                            reject(new Error('Invalid server response. Please try again.'));
                         }
                     } else {
-                        let errorMessage = 'Upload failed';
+                        // Handle error response
+                        let errorMessage = `Upload failed (${xhr.status})`;
+                        let errorDetails = null;
+
                         try {
-                            const error = JSON.parse(xhr.responseText);
-                            errorMessage = error.message || errorMessage;
+                            const errorResponse = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+                            if (errorResponse) {
+                                errorMessage = errorResponse.message || errorMessage;
+                                errorDetails = errorResponse;
+                            }
                         } catch (e) {
-                            // Use default error message
+                            // Response is not JSON, use status text
+                            errorMessage = xhr.statusText || errorMessage;
                         }
+
+                        // Provide user-friendly error messages
+                        if (xhr.status === 401) {
+                            errorMessage = 'Authentication failed. Please log in again.';
+                        } else if (xhr.status === 413) {
+                            errorMessage = 'File is too large. Please choose a smaller file.';
+                        } else if (xhr.status === 400) {
+                            errorMessage = errorMessage || 'Invalid file format. Please try a different file.';
+                        } else if (xhr.status === 0) {
+                            errorMessage = 'Network error. Please check your internet connection.';
+                        }
+
+                        console.error('❌ Upload failed:', {
+                            status: xhr.status,
+                            statusText: xhr.statusText,
+                            message: errorMessage,
+                            details: errorDetails,
+                        });
+
                         reject(new Error(errorMessage));
                     }
                 });
 
-                xhr.addEventListener('error', () => {
-                    reject(new Error('Network error during upload'));
+                // Error handlers
+                xhr.addEventListener('error', (event) => {
+                    if (hasResolved) return;
+                    hasResolved = true;
+                    console.error('❌ Network error during upload:', event);
+                    reject(new Error('Network error during upload. Please check your internet connection and try again.'));
+                });
+
+                xhr.addEventListener('abort', () => {
+                    if (hasResolved) return;
+                    hasResolved = true;
+                    reject(new Error('Upload cancelled'));
                 });
 
                 xhr.addEventListener('timeout', () => {
-                    reject(new Error('Upload timed out. Please try again with a smaller file.'));
+                    if (hasResolved) return;
+                    hasResolved = true;
+                    reject(new Error('Upload timed out. Please try again with a smaller file or better connection.'));
                 });
 
-                xhr.open('POST', `${API_BASE_URL}/auth/upload`);
+                // Configure and send request
+                const uploadUrl = `${API_BASE_URL}/auth/upload`;
+                xhr.open('POST', uploadUrl);
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-                // IMPORTANT: Do NOT set Content-Type header - let XHR set it with proper boundary
-                xhr.timeout = 300000; // 5 minute timeout for videos
-                xhr.send(formData);
+                
+                // CRITICAL: Do NOT set Content-Type header manually
+                // Let XMLHttpRequest set it automatically with the correct boundary
+                
+                // Set timeout (5 minutes for videos, 2 minutes for images)
+                xhr.timeout = fileType === 'video' ? 300000 : 120000;
 
-            } catch (error) {
-                console.error('❌ Upload failed:', error);
-                reject(error);
-            }
-        });
+                try {
+                    xhr.send(formData);
+                } catch (sendError: any) {
+                    if (hasResolved) return;
+                    hasResolved = true;
+                    console.error('❌ Failed to send request:', sendError);
+                    reject(new Error(`Failed to start upload: ${sendError.message || 'Unknown error'}`));
+                }
+            });
+
+        } catch (error: any) {
+            console.error('❌ Upload preparation failed:', error);
+            const errorMessage = error.message || 'Upload failed. Please try again.';
+            throw new Error(errorMessage);
+        }
     };
 
     const pickImage = async () => {
         try {
+            // Request permissions first
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Permission Required',
+                    'Please grant photo library access to upload images.',
+                    [{ text: 'OK' }]
+                );
+                return;
+            }
+
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
                 allowsEditing: true,
                 aspect: [3, 4],
                 quality: 0.8,
+                exif: false, // Don't include EXIF data to reduce file size
             });
 
             if (!result.canceled && result.assets[0]) {
+                const asset = result.assets[0];
                 const slotKey = `photo-${photos.length}`;
                 setUploadingSlots(prev => ({ ...prev, [slotKey]: true }));
+                setUploadProgress(prev => ({ ...prev, [slotKey]: 0 }));
 
                 try {
-                    // Upload image to server
-                    const uploadedUrl = await uploadFile(result.assets[0].uri, 'image', slotKey);
-                    setPhotos((prev) => [...prev, typeof uploadedUrl === 'string' ? uploadedUrl : (uploadedUrl as any).url]);
-                } catch (uploadError) {
-                    console.error('Image upload failed:', uploadError);
+                    console.log('📷 Selected image:', {
+                        uri: asset.uri.substring(0, 50) + '...',
+                        width: asset.width,
+                        height: asset.height,
+                        mimeType: asset.mimeType,
+                    });
+
+                    // Upload image to server (pass MIME type if available)
+                    const uploadedUrl = await uploadFile(asset.uri, 'image', slotKey, asset.mimeType);
+                    const finalUrl = typeof uploadedUrl === 'string' ? uploadedUrl : (uploadedUrl as any).url;
+                    setPhotos((prev) => [...prev, finalUrl]);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                } catch (uploadError: any) {
+                    console.error('❌ Image upload failed:', uploadError);
+                    const errorMessage = uploadError?.message || 'Failed to upload image. Please try again.';
                     Alert.alert(
                         'Upload Failed',
-                        'Failed to upload image. Please try again.',
+                        errorMessage,
                         [{ text: 'OK' }]
                     );
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 } finally {
                     setUploadingSlots(prev => ({ ...prev, [slotKey]: false }));
+                    setUploadProgress(prev => {
+                        const updated = { ...prev };
+                        delete updated[slotKey];
+                        return updated;
+                    });
                 }
             }
-        } catch (error) {
-            console.error('Image selection failed:', error);
+        } catch (error: any) {
+            console.error('❌ Image selection failed:', error);
+            const errorMessage = error?.message || 'Failed to select image. Please try again.';
             Alert.alert(
                 'Error',
-                'Failed to select image. Please try again.',
+                errorMessage,
                 [{ text: 'OK' }]
             );
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         }
     };
 
     const pickVideo = async () => {
         try {
+            // Request permissions first
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Permission Required',
+                    'Please grant photo library access to upload videos.',
+                    [{ text: 'OK' }]
+                );
+                return;
+            }
+
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Videos,
                 allowsEditing: true,
                 quality: 0.8,
+                videoMaxDuration: 30, // Limit to 30 seconds
             });
 
             if (!result.canceled && result.assets[0]) {
+                const asset = result.assets[0];
                 const slotKey = `video-${videos.length}`;
                 setUploadingSlots(prev => ({ ...prev, [slotKey]: true }));
+                setUploadProgress(prev => ({ ...prev, [slotKey]: 0 }));
 
                 try {
-                    // Upload video to server
-                    console.log('📤 Uploading video from:', result.assets[0].uri);
-                    const uploadResult = await uploadFile(result.assets[0].uri, 'video', slotKey) as { url: string, thumbnailUrl: string };
+                    console.log('🎥 Selected video:', {
+                        uri: asset.uri.substring(0, 50) + '...',
+                        duration: asset.duration,
+                        width: asset.width,
+                        height: asset.height,
+                        mimeType: asset.mimeType,
+                        fileSize: asset.fileSize ? `${Math.round(asset.fileSize / (1024 * 1024))}MB` : 'unknown',
+                    });
+
+                    // Upload video to server (pass MIME type if available)
+                    const uploadResult = await uploadFile(asset.uri, 'video', slotKey, asset.mimeType) as { url: string, thumbnailUrl?: string };
                     console.log('✅ Video upload success:', uploadResult);
                     setVideos((prev) => [...prev, uploadResult]);
-                } catch (uploadError) {
-                    console.error('Video upload failed:', uploadError);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                } catch (uploadError: any) {
+                    console.error('❌ Video upload failed:', uploadError);
+                    const errorMessage = uploadError?.message || 'Failed to upload video. Please try again.';
                     Alert.alert(
                         'Upload Failed',
-                        'Failed to upload video. Please try again.',
+                        errorMessage,
                         [{ text: 'OK' }]
                     );
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 } finally {
                     setUploadingSlots(prev => ({ ...prev, [slotKey]: false }));
+                    setUploadProgress(prev => {
+                        const updated = { ...prev };
+                        delete updated[slotKey];
+                        return updated;
+                    });
                 }
             }
-        } catch (error) {
-            console.error('Video selection failed:', error);
+        } catch (error: any) {
+            console.error('❌ Video selection failed:', error);
+            const errorMessage = error?.message || 'Failed to select video. Please try again.';
             Alert.alert(
                 'Error',
-                'Failed to select video. Please try again.',
+                errorMessage,
                 [{ text: 'OK' }]
             );
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         }
     };
 

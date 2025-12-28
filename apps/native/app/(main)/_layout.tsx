@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { PlayCircle, Calendar, Heart, MessageSquare, User } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -17,6 +17,7 @@ import { getCurrentUserId } from '../../services/authService';
 export default function MainLayout() {
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
+    const pathname = usePathname();
     const [unreadCount, setUnreadCount] = useState(0);
     const [newMatchCount, setNewMatchCount] = useState(0);
     const apiErrorCountRef = useRef(0);
@@ -167,19 +168,24 @@ export default function MainLayout() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
+    // Hide tab bar when user is in an event session to prevent distractions
+    const isInEventSession = pathname?.includes('/events/session/') || pathname?.includes('/events/waiting/');
+
     return (
         <View style={styles.container}>
             <Tabs
                 backBehavior="history"
                 screenOptions={{
                     headerShown: false,
-                    tabBarStyle: [
-                        styles.tabBar,
-                        {
-                            paddingBottom: Math.max(insets.bottom, 8),
-                            height: 60 + Math.max(insets.bottom, 8),
-                        },
-                    ],
+                    tabBarStyle: isInEventSession
+                        ? { display: 'none' }
+                        : [
+                            styles.tabBar,
+                            {
+                                paddingBottom: Math.max(insets.bottom, 8),
+                                height: 60 + Math.max(insets.bottom, 8),
+                            },
+                        ],
                     tabBarActiveTintColor: '#3B82F6',
                     tabBarInactiveTintColor: '#718096',
                     tabBarLabelStyle: styles.tabLabel,

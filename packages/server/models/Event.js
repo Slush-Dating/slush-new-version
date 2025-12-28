@@ -84,6 +84,24 @@ const eventSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
+    },
+    // Event timing synchronization fields for live sessions
+    currentRound: {
+        type: Number,
+        default: 1
+    },
+    currentPhase: {
+        type: String,
+        enum: ['lobby', 'date', 'feedback'],
+        default: 'lobby'
+    },
+    phaseStartTime: {
+        type: Date,
+        default: null
+    },
+    lastPhaseUpdate: {
+        type: Date,
+        default: null
     }
 });
 
@@ -111,7 +129,7 @@ eventSchema.set('toJSON', { virtuals: true });
 eventSchema.set('toObject', { virtuals: true });
 
 // Method to hash password
-eventSchema.methods.setPassword = async function(password) {
+eventSchema.methods.setPassword = async function (password) {
     if (password) {
         this.password = await bcrypt.hash(password, 12);
         this.isPasswordProtected = true;
@@ -122,7 +140,7 @@ eventSchema.methods.setPassword = async function(password) {
 };
 
 // Method to verify password
-eventSchema.methods.verifyPassword = async function(password) {
+eventSchema.methods.verifyPassword = async function (password) {
     if (!this.password) return true; // No password set, allow access
     return await bcrypt.compare(password, this.password);
 };

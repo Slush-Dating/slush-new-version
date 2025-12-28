@@ -9,12 +9,22 @@ const notificationSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['like', 'match', 'general', 'security'],
+        enum: ['like', 'match', 'general', 'security', 'event_reminder', 'event_starting', 'new_events'],
         required: true
     },
     fromUserId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
+        default: null
+    },
+    eventId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Event',
+        default: null
+    },
+    reminderType: {
+        type: String,
+        enum: ['30_minutes', '15_minutes', '60_seconds', 'waiting_room_open', null],
         default: null
     },
     title: {

@@ -260,17 +260,42 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
             .limit(50)
             .lean();
 
+        // Calculate total possible partners (including already-paired ones) for accurate exhaustion detection
+        const totalPossibleQuery = {
+            _id: {
+                $in: allParticipants.map(id => new mongoose.Types.ObjectId(id)),
+                $nin: [new mongoose.Types.ObjectId(userId)] // Only exclude current user, not paired partners
+            },
+            onboardingCompleted: true,
+            isAdmin: { $ne: true },
+            email: { $not: { $regex: /admin/i } },
+            name: { $not: { $regex: /admin/i } },
+            ...genderFilter
+        };
+
+        const totalPossiblePartners = await User.countDocuments(totalPossibleQuery);
+
         if (potentialPartners.length === 0) {
             // Check if all partners have been dated
             const totalExcluded = pairedPartnerIds.length;
-            if (totalExcluded > 0) {
+
+            // Better exhaustion detection: check if we've dated everyone possible
+            if (totalExcluded > 0 && totalExcluded >= totalPossiblePartners) {
+                console.log(`[Agora API] User ${userId} has dated all ${totalPossiblePartners} possible partners. Event complete.`);
                 return res.status(404).json({
                     message: 'You have met everyone available! Great job!',
                     allPartnersExhausted: true,
-                    totalDated: totalExcluded
+                    totalDated: totalExcluded,
+                    totalPossible: totalPossiblePartners
                 });
             }
-            return res.status(404).json({ message: 'No matching partners found' });
+
+            // No partners found but haven't dated everyone - might be a filtering issue
+            return res.status(404).json({
+                message: 'No matching partners found',
+                totalDated: totalExcluded,
+                totalPossible: totalPossiblePartners
+            });
         }
 
         // Calculate age for each partner
@@ -301,10 +326,41 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
 
         console.log(`[Agora API] User ${userId} matched with ${randomPartner.userId}. Excluded ${pairedPartnerIds.length} previous partners. ${partnersWithAge.length} available.`);
 
+        // Initialize phase timing if not set (first time event starts)
+        if (!event.phaseStartTime) {
+            event.phaseStartTime = new Date();
+            event.currentPhase = 'lobby';
+            event.currentRound = 1;
+            event.lastPhaseUpdate = new Date();
+            await event.save();
+        }
+
+        // Calculate time remaining in current phase
+        const now = new Date();
+        const phaseElapsed = event.phaseStartTime ? Math.floor((now - event.phaseStartTime) / 1000) : 0;
+
+        // Phase durations in seconds
+        const PHASE_DURATIONS = {
+            lobby: 60,
+            date: 180,
+            feedback: 60
+        };
+
+        const currentPhaseDuration = PHASE_DURATIONS[event.currentPhase] || 60;
+        const timeRemaining = Math.max(0, currentPhaseDuration - phaseElapsed);
+
         res.json({
             partner: randomPartner,
             totalAvailable: partnersWithAge.length,
-            totalExcluded: pairedPartnerIds.length
+            totalExcluded: pairedPartnerIds.length,
+            // Timing synchronization data
+            timing: {
+                currentRound: event.currentRound,
+                currentPhase: event.currentPhase,
+                phaseStartTime: event.phaseStartTime,
+                timeRemaining: timeRemaining,
+                serverTime: now.toISOString()
+            }
         });
     } catch (error) {
         console.error('Error getting next partner:', error);

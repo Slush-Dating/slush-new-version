@@ -232,6 +232,21 @@ export default function WaitingRoomScreen() {
         },
     ];
 
+    // Auto-navigate when event starts
+    useEffect(() => {
+        if (isEventStarting && id) {
+            // Trigger haptic feedback
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+            // Wait 1.5 seconds to show the "Join Event" button briefly, then auto-navigate
+            const autoJoinTimeout = setTimeout(() => {
+                handleJoinSession();
+            }, 1500);
+
+            return () => clearTimeout(autoJoinTimeout);
+        }
+    }, [isEventStarting, id]);
+
     const requestCameraPermission = async () => {
         try {
             const { status } = await Camera.requestCameraPermissionsAsync();
@@ -245,9 +260,9 @@ export default function WaitingRoomScreen() {
 
     const handleCheckAppearance = async () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        
+
         const hasPermission = await requestCameraPermission();
-        
+
         if (hasPermission) {
             setShowCameraModal(true);
         } else {
@@ -312,7 +327,7 @@ export default function WaitingRoomScreen() {
                 {/* Countdown Section */}
                 <View style={styles.countdownSection}>
                     <Text style={styles.almostThereText}>We are almost there.</Text>
-                    
+
                     {/* Circular Progress Countdown */}
                     <View style={styles.circleContainer}>
                         <Svg width={CIRCLE_SIZE} height={CIRCLE_SIZE} style={styles.circleSvg}>
@@ -538,7 +553,7 @@ export default function WaitingRoomScreen() {
                         >
                             {guideSteps.map((step) => {
                                 if (step.step !== currentGuideStep) return null;
-                                
+
                                 return (
                                     <View key={step.step} style={styles.stepContent}>
                                         {/* Step Image */}

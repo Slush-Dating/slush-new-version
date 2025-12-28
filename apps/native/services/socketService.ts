@@ -19,6 +19,7 @@ class SocketService {
     private typingStopHandlers: Set<(userId: string) => void> = new Set();
     private userStatusHandlers: Set<(data: { userId: string; isOnline: boolean }) => void> = new Set();
     private userAbsentHandlers: Set<(data: { userId: string; eventId: string }) => void> = new Set();
+    private notificationHandlers: Set<(data: { type: string; notification: any }) => void> = new Set();
 
     /**
      * Connect to the socket server
@@ -137,6 +138,21 @@ class SocketService {
         this.socket.on('user_absent', (data: { userId: string; eventId: string }) => {
             console.log('👤 User marked as absent:', data.userId, 'for event:', data.eventId);
             this.userAbsentHandlers.forEach(handler => handler(data));
+        });
+
+        // Listen for new notifications (likes, matches, event reminders, etc.)
+        this.socket.on('new_notification', (data: { type: string; notification: any }) => {
+            console.log('🔔 New notification received:', data.type, data.notification?.title);
+            this.notificationHandlers.forEach(handler => handler(data));
+        });
+
+        // Listen for event reminder notifications specifically
+        this.socket.on('event_reminder', (data: any) => {
+            console.log('📅 Event reminder received:', data.reminderType);
+            this.notificationHandlers.forEach(handler => handler({
+                type: 'event_reminder',
+                notification: data
+            }));
         });
     }
 
@@ -314,6 +330,13 @@ class SocketService {
     }
 
     /**
+     * Register a handler for notification events
+     */
+    onNotification(handler: (data: { type: string; notification: any }) => void): void {
+        this.notificationHandlers.add(handler);
+    }
+
+    /**
      * Request the online status of a specific user
      */
     getUserStatus(userId: string): void {
@@ -338,6 +361,8 @@ class SocketService {
             this.userStatusHandlers.delete(handler);
         } else if (event === 'user_absent') {
             this.userAbsentHandlers.delete(handler);
+        } else if (event === 'new_notification' || event === 'notification') {
+            this.notificationHandlers.delete(handler);
         } else if (this.socket) {
             this.socket.off(event, handler);
         }

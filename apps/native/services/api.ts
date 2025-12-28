@@ -769,7 +769,19 @@ export const agoraService = {
         return response.json();
     },
 
-    async getNextPartner(eventId: string, pairedPartnerIds: string[] = []): Promise<{ partner: any; totalAvailable: number; totalExcluded?: number; allPartnersExhausted?: boolean }> {
+    async getNextPartner(eventId: string, pairedPartnerIds: string[] = []): Promise<{
+        partner: any;
+        totalAvailable: number;
+        totalExcluded?: number;
+        allPartnersExhausted?: boolean;
+        timing?: {
+            currentRound: number;
+            currentPhase: 'lobby' | 'date' | 'feedback';
+            phaseStartTime: string;
+            timeRemaining: number;
+            serverTime: string;
+        }
+    }> {
         const API_BASE_URL = getApiBaseUrl();
         const headers = await getAuthHeaders();
 
@@ -793,11 +805,13 @@ export const agoraService = {
 
 export interface NotificationData {
     id: string;
-    type: 'like' | 'match' | 'message' | 'general' | 'security';
+    type: 'like' | 'match' | 'message' | 'general' | 'security' | 'event_reminder' | 'event_starting' | 'new_events';
     title: string;
     description?: string;
     userImage?: string;
     matchId?: string;
+    eventId?: string;
+    reminderType?: '30_minutes' | '15_minutes' | '60_seconds' | 'waiting_room_open';
     timestamp: string;
     isRead: boolean;
     actionButton?: string;

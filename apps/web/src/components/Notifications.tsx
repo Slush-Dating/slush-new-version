@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, User, Shield, Loader2 } from 'lucide-react';
+import { ArrowLeft, User, Shield, Loader2, Heart, Calendar, Clock, Sparkles } from 'lucide-react';
 import { notificationService, type NotificationData } from '../services/api';
 import { getAbsoluteMediaUrl } from '../services/apiConfig';
 import './Notifications.css';
@@ -10,7 +10,7 @@ interface NotificationsProps {
     onUpgrade?: () => void;
 }
 
-type NotificationFilter = 'all' | 'general' | 'match' | 'likes';
+type NotificationFilter = 'all' | 'general' | 'match' | 'likes' | 'events';
 
 export const Notifications: React.FC<NotificationsProps> = ({ onBack, isPremium: propIsPremium, onUpgrade }) => {
     const [activeFilter, setActiveFilter] = useState<NotificationFilter>('all');
@@ -23,7 +23,8 @@ export const Notifications: React.FC<NotificationsProps> = ({ onBack, isPremium:
         { id: 'all', label: 'All' },
         { id: 'general', label: 'General' },
         { id: 'match', label: 'Match' },
-        { id: 'likes', label: 'Likes' }
+        { id: 'likes', label: 'Likes' },
+        { id: 'events', label: 'Events' }
     ];
 
     useEffect(() => {
@@ -34,7 +35,11 @@ export const Notifications: React.FC<NotificationsProps> = ({ onBack, isPremium:
         try {
             setLoading(true);
             setError(null);
-            const filterType = activeFilter === 'likes' ? 'like' : activeFilter;
+            const filterType = activeFilter === 'likes'
+                ? 'like'
+                : activeFilter === 'events'
+                    ? 'event_reminder'
+                    : activeFilter;
             const response = await notificationService.getNotifications(filterType);
             setNotifications(response.notifications);
             setIsPremium(response.isPremium);
@@ -61,6 +66,9 @@ export const Notifications: React.FC<NotificationsProps> = ({ onBack, isPremium:
         switch (type) {
             case 'like': return 'Likes';
             case 'match': return 'Match';
+            case 'event_reminder': return 'Event';
+            case 'event_starting': return 'Starting';
+            case 'new_events': return 'New';
             default: return null;
         }
     };
@@ -81,7 +89,15 @@ export const Notifications: React.FC<NotificationsProps> = ({ onBack, isPremium:
         if (notification.type === 'like') {
             return (
                 <div className="notification-icon like-icon">
-                    <User size={24} />
+                    <Heart size={24} />
+                </div>
+            );
+        }
+
+        if (notification.type === 'match') {
+            return (
+                <div className="notification-icon match-icon">
+                    <Heart size={24} />
                 </div>
             );
         }
@@ -90,6 +106,30 @@ export const Notifications: React.FC<NotificationsProps> = ({ onBack, isPremium:
             return (
                 <div className="notification-icon security-icon">
                     <Shield size={24} />
+                </div>
+            );
+        }
+
+        if (notification.type === 'event_reminder') {
+            return (
+                <div className="notification-icon event-icon">
+                    <Calendar size={24} />
+                </div>
+            );
+        }
+
+        if (notification.type === 'event_starting') {
+            return (
+                <div className="notification-icon event-starting-icon">
+                    <Clock size={24} />
+                </div>
+            );
+        }
+
+        if (notification.type === 'new_events') {
+            return (
+                <div className="notification-icon new-events-icon">
+                    <Sparkles size={24} />
                 </div>
             );
         }

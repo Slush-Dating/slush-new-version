@@ -21,6 +21,7 @@ import Message from './models/Message.js';
 import Match from './models/Match.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
+import notificationService from './utils/notificationService.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -411,7 +412,19 @@ io.on('connection', (socket) => {
 
 // Pass io instance to routes that need it
 setSocketIO(io);
+notificationService.setSocketIO(io);
 app.set('io', io);
+
+// Start event reminder scheduler (runs every 60 seconds)
+setInterval(async () => {
+    try {
+        await notificationService.checkAndSendEventReminders();
+    } catch (error) {
+        console.error('[Server] Error in event reminder scheduler:', error);
+    }
+}, 60000);
+
+console.log('📅 Event reminder scheduler started (checking every 60 seconds)');
 
 // Routes
 app.use('/api/events', eventRoutes);

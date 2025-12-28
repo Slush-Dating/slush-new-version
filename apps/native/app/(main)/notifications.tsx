@@ -23,6 +23,9 @@ import {
     MessageCircle,
     Shield,
     Bell,
+    Calendar,
+    Clock,
+    Sparkles,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -31,13 +34,14 @@ import { getAbsoluteMediaUrl } from '../../services/apiConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { useBackNavigation } from '../../hooks/useBackNavigation';
 
-type FilterType = 'all' | 'general' | 'match' | 'like';
+type FilterType = 'all' | 'general' | 'match' | 'like' | 'events';
 
 const FILTERS: { id: FilterType; label: string }[] = [
     { id: 'all', label: 'All' },
     { id: 'general', label: 'General' },
     { id: 'match', label: 'Matches' },
     { id: 'like', label: 'Likes' },
+    { id: 'events', label: 'Events' },
 ];
 
 export default function NotificationsScreen() {
@@ -53,7 +57,9 @@ export default function NotificationsScreen() {
     const fetchNotifications = useCallback(async () => {
         try {
             setError(null);
-            const response = await notificationService.getNotifications(activeFilter);
+            // Map 'events' filter to 'event_reminder' for API
+            const filterType = activeFilter === 'events' ? 'event_reminder' : activeFilter;
+            const response = await notificationService.getNotifications(filterType);
             setNotifications(response.notifications);
         } catch (err) {
             console.error('Failed to fetch notifications:', err);
@@ -106,6 +112,15 @@ export default function NotificationsScreen() {
             router.push(`/(main)/chat/${notification.matchId}`);
         } else if (notification.type === 'like') {
             router.push('/(main)/matches');
+        } else if (notification.type === 'event_reminder' || notification.type === 'event_starting') {
+            // Navigate to event waiting room or event details
+            if (notification.eventId) {
+                router.push(`/(main)/events/waiting/${notification.eventId}`);
+            } else {
+                router.push('/(main)/events');
+            }
+        } else if (notification.type === 'new_events') {
+            router.push('/(main)/events');
         }
     };
 
@@ -145,6 +160,21 @@ export default function NotificationsScreen() {
                 color = '#f59e0b';
                 bgColor = 'rgba(245, 158, 11, 0.15)';
                 break;
+            case 'event_reminder':
+                Icon = Calendar;
+                color = '#8b5cf6';
+                bgColor = 'rgba(139, 92, 246, 0.15)';
+                break;
+            case 'event_starting':
+                Icon = Clock;
+                color = '#ef4444';
+                bgColor = 'rgba(239, 68, 68, 0.15)';
+                break;
+            case 'new_events':
+                Icon = Sparkles;
+                color = '#ec4899';
+                bgColor = 'rgba(236, 72, 153, 0.15)';
+                break;
         }
 
         return (
@@ -162,8 +192,31 @@ export default function NotificationsScreen() {
                 return '#22c55e';
             case 'message':
                 return '#3b82f6';
+            case 'event_reminder':
+                return '#8b5cf6';
+            case 'event_starting':
+                return '#ef4444';
+            case 'new_events':
+                return '#ec4899';
             default:
                 return '#64748b';
+        }
+    };
+
+    const getBadgeLabel = (type: NotificationData['type']) => {
+        switch (type) {
+            case 'like':
+                return 'Like';
+            case 'match':
+                return 'Match';
+            case 'event_reminder':
+                return 'Event';
+            case 'event_starting':
+                return 'Starting';
+            case 'new_events':
+                return 'New';
+            default:
+                return null;
         }
     };
 
@@ -178,7 +231,7 @@ export default function NotificationsScreen() {
             <View style={styles.notificationContent}>
                 <View style={styles.notificationHeader}>
                     <Text style={styles.notificationTitle}>{item.title}</Text>
-                    {item.type !== 'general' && (
+                    {getBadgeLabel(item.type) && (
                         <View
                             style={[
                                 styles.badge,
@@ -191,7 +244,7 @@ export default function NotificationsScreen() {
                                     { color: getBadgeColor(item.type) },
                                 ]}
                             >
-                                {item.type === 'like' ? 'Like' : item.type === 'match' ? 'Match' : ''}
+                                {getBadgeLabel(item.type)}
                             </Text>
                         </View>
                     )}

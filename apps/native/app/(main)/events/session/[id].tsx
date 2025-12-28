@@ -28,6 +28,8 @@ import Animated, {
     withSequence,
     withDelay,
     interpolate,
+    FadeIn,
+    FadeOut,
 } from 'react-native-reanimated';
 import {
     Heart,
@@ -431,8 +433,26 @@ export default function EventSessionScreen() {
             }
 
             setPartner(result.partner);
-            setPhase('lobby');
-            setTimeLeft(TIMING.LOBBY);
+
+            // TIMING SYNCHRONIZATION: Use server timing if available
+            if (result.timing) {
+                const { currentPhase, timeRemaining, currentRound: serverRound } = result.timing;
+
+                console.log(`[Timing Sync] Server phase: ${currentPhase}, Time remaining: ${timeRemaining}s, Round: ${serverRound}`);
+
+                // Sync phase and time with server
+                setPhase(currentPhase as SessionPhase);
+                setTimeLeft(timeRemaining);
+                setRoundNumber(serverRound);
+
+                // Reset time notifications for new phase
+                setTimeNotifications({ '1min': false, '30sec': false });
+            } else {
+                // Fallback to local timing if server doesn't provide timing data
+                console.warn('[Timing Sync] No server timing data, using local timing (may cause desync)');
+                setPhase('lobby');
+                setTimeLeft(TIMING.LOBBY);
+            }
         } catch (error: any) {
             console.error('Failed to fetch next partner:', error);
 
@@ -1308,12 +1328,9 @@ export default function EventSessionScreen() {
             {/* Time notification overlay */}
             {showTimeNotification && (
                 <Animated.View
-                    style={[styles.timeNotification, {
-                        opacity: withTiming(1, { duration: 300 }),
-                        transform: [{ translateY: withTiming(0, { duration: 300 }) }]
-                    }]}
-                    entering={withTiming(1, { duration: 300 })}
-                    exiting={withTiming(0, { duration: 300 })}
+                    style={styles.timeNotification}
+                    entering={FadeIn.duration(300)}
+                    exiting={FadeOut.duration(300)}
                 >
                     <View style={styles.timeNotificationContent}>
                         <Clock size={16} color="#ffffff" />

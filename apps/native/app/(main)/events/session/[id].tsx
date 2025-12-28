@@ -109,7 +109,7 @@ export default function EventSessionScreen() {
     const [partner, setPartner] = useState<Partner | null>(null);
     const [timeLeft, setTimeLeft] = useState(0);
     const [roundNumber, setRoundNumber] = useState(1);
-    const [totalRounds] = useState(10); // Default to 10 rounds
+    const [totalRounds, setTotalRounds] = useState(0); // Set dynamically based on participants
     const [isCameraOn, setIsCameraOn] = useState(true);
     const [isMicOn, setIsMicOn] = useState(true);
     const [hasPermission, setHasPermission] = useState<boolean | null>(null);
@@ -434,6 +434,15 @@ export default function EventSessionScreen() {
 
             setPartner(result.partner);
 
+            // Set totalRounds based on available partners (first fetch only)
+            // totalPossible includes current partner, so rounds = all partners you can date
+            if (totalRounds === 0 && result.totalAvailable !== undefined) {
+                // Total rounds = currently available + already paired
+                const total = result.totalAvailable + pairedPartnerIds.length;
+                console.log(`[Session] Setting totalRounds to ${total} (${result.totalAvailable} available + ${pairedPartnerIds.length} already dated)`);
+                setTotalRounds(total);
+            }
+
             // TIMING SYNCHRONIZATION: Use server timing if available
             if (result.timing) {
                 const { currentPhase, timeRemaining, currentRound: serverRound } = result.timing;
@@ -675,7 +684,12 @@ export default function EventSessionScreen() {
         // Leave current channel
         await leaveAgoraChannel();
 
-        if (roundNumber >= totalRounds) {
+        // Check if we've dated everyone or reached max rounds
+        const datedCount = pairedPartnerIds.length + 1; // +1 for current partner being added
+        console.log(`[Session] Completed round ${roundNumber}. Dated ${datedCount}/${totalRounds} partners.`);
+
+        if (datedCount >= totalRounds && totalRounds > 0) {
+            console.log('[Session] All partners dated! Moving to summary.');
             setPhase('summary');
         } else {
             setRoundNumber((prev) => prev + 1);

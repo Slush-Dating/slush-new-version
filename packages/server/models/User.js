@@ -27,6 +27,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['men', 'women', 'everyone']
     },
+    profession: {
+        type: String,
+        trim: true
+    },
     location: {
         type: {
             type: String,

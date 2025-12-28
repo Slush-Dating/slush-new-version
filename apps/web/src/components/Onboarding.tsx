@@ -56,6 +56,7 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
         dob: '',
         gender: 'woman',
         interestedIn: 'everyone',
+        profession: '',
         bio: '',
         interests: [] as string[],
         prompts: [
@@ -523,6 +524,30 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
                         key="step4"
                         className="onboarding-step"
                     >
+                        <h2 className="onboarding-title">What do <br />you do?</h2>
+                        <div className="auth-input-group">
+                            <label>Profession</label>
+                            <input
+                                type="text"
+                                className="auth-input"
+                                value={formData.profession}
+                                onChange={e => setFormData({ ...formData, profession: e.target.value })}
+                                placeholder="Ex. Software Engineer, Doctor, Student, etc."
+                                autoFocus
+                            />
+                        </div>
+                        <div className="onboarding-nav">
+                            <button className="back-btn" onClick={prevStep}><ChevronLeft size={24} /></button>
+                            <button className="auth-submit-btn" onClick={() => handleUpdate()}>Continue</button>
+                        </div>
+                    </div>
+                );
+            case 5:
+                return (
+                    <div
+                        key="step5"
+                        className="onboarding-step"
+                    >
                         <h2 className="onboarding-title">What are you <br />into?</h2>
                         <p className="onboarding-hint">Select up to 6 interests to find your match.</p>
                         <div className="interests-grid">
@@ -545,10 +570,10 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
                         </div>
                     </div>
                 );
-            case 5:
+            case 6:
                 return (
                     <div
-                        key="step5"
+                        key="step6"
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Let's break <br />the ice.</h2>
@@ -584,10 +609,10 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
                         </div>
                     </div>
                 );
-            case 6:
+            case 7:
                 return (
                     <div
-                        key="step5"
+                        key="step7"
                         className="onboarding-step"
                     >
                         <h2 className="onboarding-title">Add your <br />best shots.</h2>
@@ -704,7 +729,7 @@ function OnboardingComponent({ token, onComplete }: OnboardingProps) {
                     <div className="progress-bar">
                         <div
                             className="progress-fill"
-                            style={{ width: `${(step / 6) * 100}%`, transition: 'width 0.5s ease-out' }}
+                            style={{ width: `${(step / 7) * 100}%`, transition: 'width 0.5s ease-out' }}
                         />
                     </div>
                 </div>

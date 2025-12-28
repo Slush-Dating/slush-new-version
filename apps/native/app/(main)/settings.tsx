@@ -137,7 +137,8 @@ export default function SettingsScreen() {
                             icon={<User size={20} color="#94a3b8" />}
                             title="Edit Profile"
                             onPress={() => {
-                                // TODO: Navigate to edit profile
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/(main)/user/edit');
                             }}
                             showArrow
                         />

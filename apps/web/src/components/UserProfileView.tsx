@@ -391,7 +391,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ userId, onBack
                     <section className="section-identity">
                         <div className="identity-header">
                             <h1 className="name-age">{user.name}, {calculateAge(user.dob)}</h1>
-                            <p className="profession">Professional model</p>
+                            <p className="profession">{user.profession || 'Not specified'}</p>
                         </div>
 
                         <div className="location-row">
@@ -432,6 +432,21 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({ userId, onBack
                             )}
                         </div>
                     </section>
+
+                    {/* Prompts Section (Life Goals & Simple Pleasures) */}
+                    {user.prompts && user.prompts.length > 0 && user.prompts.some((p: any) => p.answer && p.answer.trim()) && (
+                        <section className="section-prompts">
+                            <h4 className="section-label">About Me</h4>
+                            {user.prompts.map((prompt: any, index: number) => (
+                                prompt.answer && prompt.answer.trim() && (
+                                    <div key={index} className="prompt-card">
+                                        <h5 className="prompt-question">{prompt.question}</h5>
+                                        <p className="prompt-answer">{prompt.answer}</p>
+                                    </div>
+                                )
+                            ))}
+                        </section>
+                    )}
 
                     {/* Unified Media Gallery */}
                     <section className="section-media-gallery">

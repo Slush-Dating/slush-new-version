@@ -378,6 +378,7 @@ router.put('/onboarding', async (req, res) => {
             dob: user.dob,
             gender: user.gender,
             interestedIn: user.interestedIn,
+            profession: user.profession,
             bio: user.bio,
             interests: user.interests,
             photos: user.photos,
@@ -455,6 +456,130 @@ router.get('/profile', async (req, res) => {
 
         res.json(userObj);
     } catch (err) {
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+});
+
+/**
+ * @swagger
+ * /api/auth/profile:
+ *   put:
+ *     summary: Update current user's profile
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Update the authenticated user's profile information
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               bio:
+ *                 type: string
+ *               profession:
+ *                 type: string
+ *               interests:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               location:
+ *                 type: object
+ *                 properties:
+ *                   city:
+ *                     type: string
+ *                   state:
+ *                     type: string
+ *                   country:
+ *                     type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized - No token provided
+ *       404:
+ *         description: User not found
+ */
+router.put('/profile', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) {
+            return res.status(401).json({ message: 'No token provided' });
+        }
+
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const userId = decoded.userId;
+
+        const updates = req.body;
+
+        // Handle location data if provided
+        if (updates.location) {
+            // Ensure proper GeoJSON structure
+            if (updates.location.coordinates && Array.isArray(updates.location.coordinates)) {
+                updates.location.type = 'Point';
+            }
+            // Generate locationString if not provided
+            if (!updates.location.locationString && updates.location.city) {
+                const parts = [updates.location.city];
+                if (updates.location.state) parts.push(updates.location.state);
+                if (updates.location.country) parts.push(updates.location.country);
+                updates.location.locationString = parts.join(', ');
+            }
+        }
+
+        const user = await User.findByIdAndUpdate(userId, { $set: updates }, { new: true }).select('-password');
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Build location string from user data
+        let locationString = 'Location not set';
+        if (user.location) {
+            if (user.location.locationString) {
+                locationString = user.location.locationString;
+            } else if (user.location.city) {
+                const parts = [user.location.city];
+                if (user.location.state) parts.push(user.location.state);
+                if (user.location.country) parts.push(user.location.country);
+                locationString = parts.join(', ');
+            }
+        }
+
+        const userObj = {
+            _id: user._id,
+            id: user._id,
+            email: user.email,
+            onboardingCompleted: user.onboardingCompleted,
+            name: user.name,
+            dob: user.dob,
+            gender: user.gender,
+            interestedIn: user.interestedIn,
+            profession: user.profession,
+            bio: user.bio,
+            interests: user.interests,
+            photos: user.photos,
+            videos: user.videos,
+            prompts: user.prompts,
+            location: user.location,
+            locationString: locationString,
+            isPremium: user.isPremium
+        };
+
+        res.json({ user: userObj });
+    } catch (err) {
+        console.error('Profile update error:', err);
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 });

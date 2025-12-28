@@ -15,6 +15,7 @@
   "dependencies": {
     "@expo/metro-runtime": "^6.1.2",
     "@radix-ui/react-slot": "^1.2.4",
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",
     "@react-native-community/slider": "5.0.1",
     "@react-navigation/bottom-tabs": "^7.4.0",

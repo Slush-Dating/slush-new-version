@@ -238,7 +238,7 @@ export default function ProfileScreen() {
                             <TouchableOpacity
                                 onPress={() => {
                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                    // Add edit profile functionality here
+                                    router.push('/(main)/user/edit');
                                 }}
                                 style={styles.editIconButton}
                             >
@@ -246,7 +246,7 @@ export default function ProfileScreen() {
                             </TouchableOpacity>
                         </View>
                         <Text style={styles.profession}>
-                            {(user as any)?.profession || 'Professional model'}
+                            {(user as any)?.profession || 'Add your profession'}
                         </Text>
                     </View>
 
@@ -293,6 +293,21 @@ export default function ProfileScreen() {
                             ))}
                         </View>
                     </View>
+
+                    {/* Prompts (Life Goals & Simple Pleasures) */}
+                    {user?.prompts && user.prompts.length > 0 && user.prompts.some((p: any) => p.answer && p.answer.trim()) && (
+                        <View style={styles.promptsSection}>
+                            <Text style={styles.sectionTitle}>About Me</Text>
+                            {user.prompts.map((prompt: any, index: number) => (
+                                prompt.answer && prompt.answer.trim() ? (
+                                    <View key={index} style={styles.promptCard}>
+                                        <Text style={styles.promptQuestion}>{prompt.question}</Text>
+                                        <Text style={styles.promptAnswer}>{prompt.answer}</Text>
+                                    </View>
+                                ) : null
+                            ))}
+                        </View>
+                    )}
 
                     {/* Gallery */}
                     <View style={styles.gallerySection}>
@@ -577,6 +592,30 @@ const styles = StyleSheet.create({
         color: '#000000',
         fontSize: 15,
         fontWeight: '500',
+    },
+    promptsSection: {
+        marginBottom: 24,
+    },
+    promptCard: {
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        borderRadius: 16,
+        padding: 16,
+        marginTop: 12,
+    },
+    promptQuestion: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#3B82F6',
+        marginBottom: 8,
+        letterSpacing: 0.2,
+    },
+    promptAnswer: {
+        fontSize: 16,
+        color: '#333333',
+        lineHeight: 24,
+        fontWeight: '400',
     },
     gallerySection: {
         marginBottom: 32,

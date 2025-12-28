@@ -414,6 +414,46 @@
     transform: translateY(0) scale(0.98);
 }
 
+/* Prompts Section (Life Goals & Simple Pleasures) */
+.section-prompts {
+    margin-bottom: 40px;
+}
+
+.prompt-card {
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(59, 130, 246, 0.05) 100%);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+    transition: all 0.3s var(--transition-smooth);
+}
+
+.prompt-card:last-child {
+    margin-bottom: 0;
+}
+
+.prompt-card:hover {
+    border-color: rgba(59, 130, 246, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1);
+}
+
+.prompt-question {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--slush-blue);
+    margin-bottom: 10px;
+    letter-spacing: 0.2px;
+}
+
+.prompt-answer {
+    font-size: 16px;
+    color: var(--text-primary);
+    line-height: 1.6;
+    margin: 0;
+    font-weight: 400;
+}
+
 /* Media Gallery */
 .section-media-gallery {
     margin-bottom: 40px;

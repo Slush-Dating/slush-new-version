@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import {
     ChevronLeft,
     ChevronRight,
@@ -30,6 +31,7 @@ import {
     Trash2,
     Play,
     X,
+    Calendar,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -80,6 +82,9 @@ export default function OnboardingScreen() {
     // Form data - matching web version structure
     const [name, setName] = useState('');
     const [dob, setDob] = useState('');
+    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [dateError, setDateError] = useState<string | null>(null);
     const [gender, setGender] = useState('');
     const [interestedIn, setInterestedIn] = useState('everyone');
     const [interests, setInterests] = useState<string[]>([]);
@@ -106,6 +111,56 @@ export default function OnboardingScreen() {
     const step = STEPS[currentStep];
     const progress = (currentStep + 1) / STEPS.length;
 
+    // Helper functions for date validation
+    const isValidDate = (date: Date): boolean => {
+        return date instanceof Date && !isNaN(date.getTime());
+    };
+
+    const isOver18 = (birthDate: Date): boolean => {
+        const today = new Date();
+        const age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        const dayDiff = today.getDate() - birthDate.getDate();
+
+        // Adjust age if birthday hasn't occurred this year
+        if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+            return age - 1 >= 18;
+        }
+        return age >= 18;
+    };
+
+    const formatDateForDisplay = (date: Date): string => {
+        if (!isValidDate(date)) return '';
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const year = date.getFullYear();
+        return `${month}/${day}/${year}`;
+    };
+
+    const validateDate = (date: Date | null): string | null => {
+        if (!date || !isValidDate(date)) {
+            return 'Please select a valid date of birth';
+        }
+        if (!isOver18(date)) {
+            return 'You must be 18 years or older to use this app';
+        }
+        return null;
+    };
+
+    // Handle date picker changes
+    const handleDateChange = (event: any, selectedDate?: Date) => {
+        setShowDatePicker(false);
+        if (selectedDate) {
+            setSelectedDate(selectedDate);
+            const formattedDate = formatDateForDisplay(selectedDate);
+            setDob(formattedDate);
+
+            // Validate the selected date
+            const error = validateDate(selectedDate);
+            setDateError(error);
+        }
+    };
+
     // Restore saved onboarding state on mount
     useEffect(() => {
         const restoreState = async () => {
@@ -116,6 +171,18 @@ export default function OnboardingScreen() {
                     setCurrentStep(savedState.currentStep);
                     setName(savedState.name || '');
                     setDob(savedState.dob || '');
+
+                    // Restore date from string if available
+                    if (savedState.dob && savedState.dob.length === 10) {
+                        const [month, day, year] = savedState.dob.split('/');
+                        const date = new Date(`${year}-${month}-${day}`);
+                        if (isValidDate(date)) {
+                            setSelectedDate(date);
+                            const error = validateDate(date);
+                            setDateError(error);
+                        }
+                    }
+
                     setGender(savedState.gender || '');
                     setInterestedIn(savedState.interestedIn || 'everyone');
                     setInterests(savedState.interests || []);
@@ -185,7 +252,7 @@ export default function OnboardingScreen() {
     const canContinue = () => {
         switch (step.id) {
             case 'name-dob':
-                return name.trim().length >= 2 && dob.length === 10;
+                return name.trim().length >= 2 && selectedDate !== null && dateError === null;
             case 'preferences':
                 return !!gender && !!interestedIn;
             case 'location':
@@ -603,23 +670,35 @@ export default function OnboardingScreen() {
                             autoFocus
                             maxLength={30}
                         />
-                        <TextInput
-                            style={styles.textInput}
-                            placeholder="Birthday"
-                            placeholderTextColor="#64748b"
-                            value={dob}
-                            onChangeText={(text) => {
-                                // Auto-format as MM/DD/YYYY
-                                const cleaned = text.replace(/\D/g, '');
-                                let formatted = '';
-                                if (cleaned.length > 0) formatted += cleaned.slice(0, 2);
-                                if (cleaned.length > 2) formatted += '/' + cleaned.slice(2, 4);
-                                if (cleaned.length > 4) formatted += '/' + cleaned.slice(4, 8);
-                                setDob(formatted);
-                            }}
-                            keyboardType="number-pad"
-                            maxLength={10}
-                        />
+                        <TouchableOpacity
+                            style={[
+                                styles.dateInput,
+                                dateError && styles.dateInputError
+                            ]}
+                            onPress={() => setShowDatePicker(true)}
+                        >
+                            <Calendar size={20} color="#64748b" />
+                            <Text style={[
+                                styles.dateText,
+                                !selectedDate && styles.datePlaceholder
+                            ]}>
+                                {selectedDate ? formatDateForDisplay(selectedDate) : 'Select your birthday'}
+                            </Text>
+                        </TouchableOpacity>
+                        {dateError && (
+                            <Text style={styles.errorText}>{dateError}</Text>
+                        )}
+
+                        {showDatePicker && (
+                            <DateTimePicker
+                                value={selectedDate || new Date(2000, 0, 1)}
+                                mode="date"
+                                display="default"
+                                onChange={handleDateChange}
+                                maximumDate={new Date()} // Can't select future dates
+                                minimumDate={new Date(1900, 0, 1)} // Reasonable minimum date
+                            />
+                        )}
                     </View>
                 );
 
@@ -1377,5 +1456,34 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
         color: '#ffffff',
+    },
+    dateInput: {
+        backgroundColor: '#F8F9FA',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.05)',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    dateInputError: {
+        borderColor: '#ef4444',
+        backgroundColor: '#fef2f2',
+    },
+    dateText: {
+        fontSize: 18,
+        color: '#1A202C',
+        flex: 1,
+    },
+    datePlaceholder: {
+        color: '#64748b',
+    },
+    errorText: {
+        fontSize: 14,
+        color: '#ef4444',
+        marginTop: 4,
+        marginLeft: 4,
     },
 });

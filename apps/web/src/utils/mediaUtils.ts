@@ -1,12 +1,12 @@
 /**
  * Media Utilities for Frontend
- * 
+ *
  * Network detection, video quality selection, and caching utilities
  * for TikTok-level performance.
  */
 
-import { Network } from '@capacitor/network';
-import type { ConnectionType } from '@capacitor/network';
+// Define connection types for web API compatibility
+export type ConnectionType = 'wifi' | 'ethernet' | '4g' | 'lte' | '3g' | '2g' | 'cellular' | 'unknown' | 'none';
 
 // Cache for network status
 let cachedNetworkType: ConnectionType | null = null;
@@ -41,19 +41,31 @@ export const getNetworkType = async (): Promise<ConnectionType> => {
     }
 
     try {
-        const status = await Network.getStatus();
-        cachedNetworkType = status.connectionType;
-        lastNetworkCheck = now;
-        return status.connectionType;
-    } catch (err) {
-        // Fallback for web browsers
+        // Use Network Information API for modern browsers
         if ('connection' in navigator) {
             const connection = (navigator as any).connection;
             if (connection?.effectiveType) {
-                return connection.effectiveType as ConnectionType;
+                const effectiveType = connection.effectiveType;
+                // Map effectiveType to our ConnectionType
+                const mappedType: ConnectionType =
+                    effectiveType === 'slow-2g' ? '2g' :
+                    effectiveType === '2g' ? '2g' :
+                    effectiveType === '3g' ? '3g' :
+                    effectiveType === '4g' ? '4g' :
+                    'unknown';
+
+                cachedNetworkType = mappedType;
+                lastNetworkCheck = now;
+                return mappedType;
             }
         }
-        return 'unknown' as ConnectionType;
+
+        // Fallback: assume wifi for modern browsers
+        cachedNetworkType = 'wifi';
+        lastNetworkCheck = now;
+        return 'wifi';
+    } catch (err) {
+        return 'unknown';
     }
 };
 
@@ -61,12 +73,7 @@ export const getNetworkType = async (): Promise<ConnectionType> => {
  * Check if device is online
  */
 export const isOnline = async (): Promise<boolean> => {
-    try {
-        const status = await Network.getStatus();
-        return status.connected;
-    } catch {
-        return navigator.onLine;
-    }
+    return navigator.onLine;
 };
 
 /**
@@ -106,14 +113,38 @@ export const getVideoUrlForQuality = (baseUrl: string, quality: VideoQuality): s
  * Listen for network changes
  */
 export const onNetworkChange = (callback: (connected: boolean, type: ConnectionType) => void): (() => void) => {
-    const handler = Network.addListener('networkStatusChange', (status) => {
-        cachedNetworkType = status.connectionType;
-        lastNetworkCheck = Date.now();
-        callback(status.connected, status.connectionType);
-    });
+    const handleNetworkChange = async () => {
+        const connected = navigator.onLine;
+        const networkType = await getNetworkType();
+        callback(connected, networkType);
+    };
 
+    // Listen for online/offline events
+    window.addEventListener('online', handleNetworkChange);
+    window.addEventListener('offline', handleNetworkChange);
+
+    // Listen for connection changes if Network Information API is available
+    if ('connection' in navigator) {
+        const connection = (navigator as any).connection;
+        if (connection && connection.addEventListener) {
+            connection.addEventListener('change', handleNetworkChange);
+        }
+    }
+
+    // Initial call
+    handleNetworkChange();
+
+    // Return cleanup function
     return () => {
-        handler.then(h => h.remove());
+        window.removeEventListener('online', handleNetworkChange);
+        window.removeEventListener('offline', handleNetworkChange);
+
+        if ('connection' in navigator) {
+            const connection = (navigator as any).connection;
+            if (connection && connection.removeEventListener) {
+                connection.removeEventListener('change', handleNetworkChange);
+            }
+        }
     };
 };
 

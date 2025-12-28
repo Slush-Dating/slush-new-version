@@ -371,6 +371,9 @@ export const updateProfile = async (updates: Partial<User>): Promise<User> => {
         throw new Error('Not authenticated');
     }
 
+    console.log('🔄 Updating profile with:', JSON.stringify(updates, null, 2));
+    console.log('🔗 API URL:', `${API_BASE_URL}/auth/profile`);
+
     const response = await fetch(`${API_BASE_URL}/auth/profile`, {
         method: 'PUT',
         headers: {
@@ -380,12 +383,45 @@ export const updateProfile = async (updates: Partial<User>): Promise<User> => {
         body: JSON.stringify(updates),
     });
 
+    console.log('📡 Response status:', response.status, response.statusText);
+
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'Profile update failed' }));
-        throw new Error(error.message || 'Profile update failed');
+        let errorMessage = 'Profile update failed';
+        let errorDetails = {};
+
+        try {
+            // Try to get the response body as text first
+            const responseText = await response.text();
+            console.log('📄 Raw response:', responseText);
+
+            // Try to parse as JSON
+            try {
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.message || errorMessage;
+                errorDetails = errorData;
+            } catch {
+                // If not JSON, use the text as the error message
+                if (responseText) {
+                    errorMessage = responseText.substring(0, 200); // Limit length
+                }
+            }
+        } catch (readError) {
+            console.error('❌ Failed to read error response:', readError);
+        }
+
+        console.error('❌ Profile update error:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorMessage,
+            errorDetails,
+            url: `${API_BASE_URL}/auth/profile`
+        });
+
+        throw new Error(errorMessage);
     }
 
     const data = await response.json();
+    console.log('✅ Profile updated successfully');
 
     // Update stored user
     await saveUser(data.user);

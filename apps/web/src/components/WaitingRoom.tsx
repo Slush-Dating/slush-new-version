@@ -201,11 +201,30 @@ export const WaitingRoom: React.FC<WaitingRoomProps> = ({ eventId, onLeave, onSt
                 socketService.off('participant_count_update');
                 socketService.off('user_joined_session');
                 socketService.off('user_left_session');
+                socketService.off('event_started');
                 socketConnectedRef.current = false;
                 console.log(`📍 Left event session ${eventId}`);
             }
         };
     }, [eventId]);
+
+    // Listen for server-triggered event start
+    useEffect(() => {
+        if (!eventId) return;
+
+        const handleEventStarted = (data: { eventId: string; round?: number; totalRounds?: number }) => {
+            if (data.eventId === eventId) {
+                console.log('[WaitingRoom] Server triggered event start!', data);
+                onStart();
+            }
+        };
+
+        socketService.onEventStarted(handleEventStarted);
+
+        return () => {
+            socketService.off('event_started', handleEventStarted);
+        };
+    }, [eventId, onStart]);
 
     // Calculate time remaining until event starts
     useEffect(() => {

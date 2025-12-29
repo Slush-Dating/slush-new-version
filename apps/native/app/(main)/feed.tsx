@@ -65,8 +65,10 @@ export default function FeedScreen() {
     const flatListRef = useRef<FlatList>(null);
 
     // Fetch discovery feed
-    const fetchFeed = useCallback(async () => {
-        setIsLoading(true);
+    const fetchFeed = useCallback(async (silent = false) => {
+        if (!silent) {
+            setIsLoading(true);
+        }
         setError('');
 
         try {
@@ -90,7 +92,7 @@ export default function FeedScreen() {
     }, []);
 
     useEffect(() => {
-        fetchFeed();
+        fetchFeed(false); // Initial load
     }, [fetchFeed]);
 
     // Track which video is currently visible
@@ -324,7 +326,7 @@ export default function FeedScreen() {
         return (
             <View style={styles.errorContainer}>
                 <Text style={styles.errorText}>{error}</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={fetchFeed}>
+                <TouchableOpacity style={styles.retryButton} onPress={() => fetchFeed(false)}>
                     <RefreshCw size={20} color="#ffffff" />
                     <Text style={styles.retryText}>Try Again</Text>
                 </TouchableOpacity>
@@ -340,7 +342,7 @@ export default function FeedScreen() {
                 <Text style={styles.emptyText}>
                     Check back later for more matches in your area
                 </Text>
-                <TouchableOpacity style={styles.refreshButton} onPress={fetchFeed}>
+                <TouchableOpacity style={styles.refreshButton} onPress={() => fetchFeed(false)}>
                     <RefreshCw size={20} color="#3B82F6" />
                     <Text style={styles.refreshText}>Refresh</Text>
                 </TouchableOpacity>

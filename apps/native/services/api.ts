@@ -826,31 +826,50 @@ export const notificationService = {
             ? `${API_BASE_URL}/notifications`
             : `${API_BASE_URL}/notifications?type=${filter}`;
 
-        const response = await fetch(url, { headers });
+        try {
+            const response = await fetch(url, { headers });
 
-        if (!response.ok) {
-            return handleApiError(response);
-        }
+            if (!response.ok) {
+                // Handle 404/500 gracefully - endpoint might not exist yet
+                if (response.status === 404 || response.status === 500) {
+                    console.warn('⚠️ Notifications endpoint unavailable');
+                    return { notifications: [], isPremium: false };
+                }
+                return handleApiError(response);
+            }
 
-        const data = await response.json();
-        // Handle different response formats
-        if (Array.isArray(data)) {
-            return { notifications: data, isPremium: false };
+            const data = await response.json();
+            // Handle different response formats
+            if (Array.isArray(data)) {
+                return { notifications: data, isPremium: false };
+            }
+            return data;
+        } catch (error) {
+            console.warn('⚠️ Failed to fetch notifications:', error);
+            return { notifications: [], isPremium: false };
         }
-        return data;
     },
 
     async markAsRead(notificationId: string): Promise<void> {
         const API_BASE_URL = getApiBaseUrl();
         const headers = await getAuthHeaders();
 
-        const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
-            method: 'POST',
-            headers,
-        });
+        try {
+            const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+                method: 'POST',
+                headers,
+            });
 
-        if (!response.ok) {
-            return handleApiError(response);
+            if (!response.ok) {
+                // Handle 404/500 gracefully
+                if (response.status === 404 || response.status === 500) {
+                    console.warn('⚠️ Mark as read endpoint unavailable');
+                    return;
+                }
+                return handleApiError(response);
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to mark notification as read:', error);
         }
     },
 
@@ -862,13 +881,23 @@ export const notificationService = {
             ? `${API_BASE_URL}/notifications/unread-count?type=${type}`
             : `${API_BASE_URL}/notifications/unread-count`;
 
-        const response = await fetch(url, { headers });
+        try {
+            const response = await fetch(url, { headers });
 
-        if (!response.ok) {
-            return handleApiError(response);
+            if (!response.ok) {
+                // Handle 404/500 gracefully - endpoint might not exist yet
+                if (response.status === 404 || response.status === 500) {
+                    console.warn('⚠️ Notification count endpoint unavailable');
+                    return { unreadCount: 0 };
+                }
+                return handleApiError(response);
+            }
+
+            return response.json();
+        } catch (error) {
+            console.warn('⚠️ Failed to fetch notification count:', error);
+            return { unreadCount: 0 };
         }
-
-        return response.json();
     },
 
     async markAllAsRead(type?: string): Promise<void> {
@@ -879,13 +908,22 @@ export const notificationService = {
             ? `${API_BASE_URL}/notifications/read-all?type=${type}`
             : `${API_BASE_URL}/notifications/read-all`;
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers
-        });
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers
+            });
 
-        if (!response.ok) {
-            return handleApiError(response);
+            if (!response.ok) {
+                // Handle 404/500 gracefully - endpoint might not exist yet
+                if (response.status === 404 || response.status === 500) {
+                    console.warn('⚠️ Mark all as read endpoint unavailable');
+                    return;
+                }
+                return handleApiError(response);
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to mark notifications as read:', error);
         }
     },
 };

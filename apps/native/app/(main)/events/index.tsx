@@ -72,9 +72,11 @@ export default function EventsScreen() {
     const [activeTab, setActiveTab] = useState<'guide' | 'faq'>('guide');
 
     // Fetch events and bookings together to ensure synchronization
-    const fetchEventsAndBookings = useCallback(async () => {
+    const fetchEventsAndBookings = useCallback(async (silent = false) => {
         try {
-            setIsLoading(true);
+            if (!silent) {
+                setIsLoading(true);
+            }
             console.log('🔄 Fetching events and bookings...');
 
             // Fetch both in parallel
@@ -82,8 +84,8 @@ export default function EventsScreen() {
                 eventService.getAllEvents(),
                 eventService.getUserBookings().catch((err) => {
                     console.warn('Failed to fetch bookings:', err);
-                    return [];
-                })
+                    return [] as any[];
+                }) as Promise<any[]>
             ]);
 
             console.log('📋 Received events:', allEvents.length);
@@ -400,7 +402,7 @@ export default function EventsScreen() {
     }, []);
 
     useEffect(() => {
-        fetchEventsAndBookings();
+        fetchEventsAndBookings(false); // Initial load
     }, [fetchEventsAndBookings]);
 
     // Refresh when screen comes into focus (e.g., after booking an event)
@@ -408,7 +410,7 @@ export default function EventsScreen() {
         React.useCallback(() => {
             // Refresh both events and bookings when screen comes into focus
             // This ensures bookedEvent and countdown are properly restored
-            fetchEventsAndBookings();
+            fetchEventsAndBookings(true); // Silent refresh on focus
 
             // Fetch notification count
             const fetchNotificationCount = async () => {
@@ -469,7 +471,7 @@ export default function EventsScreen() {
 
     const handleRefresh = () => {
         setIsRefreshing(true);
-        fetchEventsAndBookings();
+        fetchEventsAndBookings(true); // Silent because we have RefreshControl
     };
 
     const handleEventPress = (event: EventData) => {

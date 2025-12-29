@@ -69,3 +69,4 @@ The script updates:
 - Version numbers (`CFBundleShortVersionString`) should increment when releasing new versions to the App Store
 - The scripts work on both macOS (using `plutil`) and Linux (using `sed`)
 - Always commit version changes before building
+

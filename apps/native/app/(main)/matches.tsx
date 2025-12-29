@@ -40,8 +40,11 @@ export default function MatchesScreen() {
     const [activeTab, setActiveTab] = useState<'matches' | 'liked'>('matches');
     const socketCallbackRef = useRef<((matchData: any) => void) | null>(null);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (silent = false) => {
         try {
+            if (!silent) {
+                setIsLoading(true);
+            }
             const [matchesData, likedYouData] = await Promise.all([
                 matchService.getMatches(),
                 matchService.getLikedYou(),
@@ -65,7 +68,7 @@ export default function MatchesScreen() {
     }, []);
 
     useEffect(() => {
-        fetchData();
+        fetchData(false); // Initial load
     }, [fetchData]);
 
     // Socket setup for real-time matches
@@ -110,7 +113,7 @@ export default function MatchesScreen() {
 
     const handleRefresh = () => {
         setIsRefreshing(true);
-        fetchData();
+        fetchData(true); // Silent refresh
     };
 
     const handleMatchPress = (match: Match) => {

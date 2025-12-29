@@ -375,6 +375,81 @@ io.on('connection', (socket) => {
         console.log(`User ${socket.userId} left event session ${eventId}`);
     });
 
+    // Get authoritative event state (for reconnection sync)
+    socket.on('get_event_state', async (eventId, callback) => {
+        if (!socket.userId) {
+            if (typeof callback === 'function') {
+                callback({ error: 'Authentication required' });
+            }
+            return;
+        }
+
+        try {
+            // Rejoin session and get state
+            const state = matchmakingService.rejoinSession(eventId, socket.userId, socket.id);
+
+            if (!state) {
+                if (typeof callback === 'function') {
+                    callback({ error: 'Event session not found' });
+                }
+                return;
+            }
+
+            // Rejoin socket room
+            socket.join(`event_session_${eventId}`);
+            socket.eventId = eventId;
+
+            // Get partner details if user has a partner
+            let partnerData = null;
+            if (state.partnerId) {
+                const partner = await User.findById(state.partnerId)
+                    .select('name dob gender bio photos')
+                    .lean();
+
+                if (partner) {
+                    let age = null;
+                    if (partner.dob) {
+                        const today = new Date();
+                        const birthDate = new Date(partner.dob);
+                        age = today.getFullYear() - birthDate.getFullYear();
+                        const monthDiff = today.getMonth() - birthDate.getMonth();
+                        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                            age--;
+                        }
+                    }
+
+                    partnerData = {
+                        id: partner._id.toString(),
+                        userId: partner._id.toString(),
+                        name: partner.name || 'Partner',
+                        age,
+                        bio: partner.bio || '',
+                        imageUrl: partner.photos && partner.photos.length > 0 ? partner.photos[0] : null,
+                    };
+                }
+            }
+
+            const response = {
+                ...state,
+                partner: partnerData,
+                channelName: state.partnerId
+                    ? `event_${eventId}_round_${state.currentRound}_${socket.userId}_${state.partnerId}`
+                    : null,
+            };
+
+            console.log(`[EventState] User ${socket.userId} requesting state for event ${eventId}:`, response);
+
+            if (typeof callback === 'function') {
+                callback(response);
+            }
+        } catch (error) {
+            console.error('[EventState] Error getting event state:', error);
+            if (typeof callback === 'function') {
+                callback({ error: 'Failed to get event state' });
+            }
+        }
+    });
+
     // Ready for matchmaking - signals user is ready for the next round
     socket.on('ready_for_matchmaking', (eventId) => {
         if (!socket.userId) {
@@ -576,6 +651,125 @@ io.on('connection', (socket) => {
 
     // Handle disconnect
     socket.on('disconnect', async () => {
+        // Handle event session disconnect first (mid-date handling)
+        if (socket.eventId && socket.userId) {
+            const disconnectInfo = matchmakingService.handleDisconnect(socket.eventId, socket.userId);
+
+            if (disconnectInfo && disconnectInfo.partnerId) {
+                // Notify partner that their date has ended
+                io.to(`user_${disconnectInfo.partnerId}`).emit('partner_disconnected', {
+                    eventId: socket.eventId,
+                    message: 'Your date has ended - your partner disconnected',
+                    wasInDate: disconnectInfo.wasInDate,
+                    currentPhase: disconnectInfo.currentPhase,
+                    currentRound: disconnectInfo.currentRound,
+                });
+                console.log(`[Disconnect] Notified partner ${disconnectInfo.partnerId} about disconnect`);
+
+                // Try to re-match the partner with a waiting user
+                if (disconnectInfo.wasInDate) {
+                    const session = matchmakingService.getSession(socket.eventId);
+                    const newPartnerId = matchmakingService.findWaitingPartner(
+                        socket.eventId,
+                        disconnectInfo.partnerId,
+                        session?.eventType || 'straight'
+                    );
+
+                    if (newPartnerId) {
+                        // Get new partner details
+                        const newPartner = await User.findById(newPartnerId)
+                            .select('name dob gender bio photos')
+                            .lean();
+
+                        if (newPartner) {
+                            let age = null;
+                            if (newPartner.dob) {
+                                const today = new Date();
+                                const birthDate = new Date(newPartner.dob);
+                                age = today.getFullYear() - birthDate.getFullYear();
+                                const monthDiff = today.getMonth() - birthDate.getMonth();
+                                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                                    age--;
+                                }
+                            }
+
+                            // Notify partner about re-match
+                            io.to(`user_${disconnectInfo.partnerId}`).emit('partner_assigned', {
+                                eventId: socket.eventId,
+                                round: disconnectInfo.currentRound,
+                                phase: disconnectInfo.currentPhase,
+                                phaseDuration: matchmakingService.PHASE_DURATIONS[disconnectInfo.currentPhase],
+                                phaseStartTime: new Date(),
+                                partner: {
+                                    id: newPartner._id.toString(),
+                                    userId: newPartner._id.toString(),
+                                    name: newPartner.name || 'Partner',
+                                    age,
+                                    bio: newPartner.bio || '',
+                                    imageUrl: newPartner.photos && newPartner.photos.length > 0 ? newPartner.photos[0] : null,
+                                },
+                                channelName: `event_${socket.eventId}_round_${disconnectInfo.currentRound}_${disconnectInfo.partnerId}_${newPartnerId}`,
+                                isRematch: true,
+                            });
+                            console.log(`[Disconnect] Re-matched ${disconnectInfo.partnerId} with waiting user ${newPartnerId}`);
+
+                            // Also notify the new partner
+                            const originalPartner = await User.findById(disconnectInfo.partnerId)
+                                .select('name dob gender bio photos')
+                                .lean();
+
+                            if (originalPartner) {
+                                let partnerAge = null;
+                                if (originalPartner.dob) {
+                                    const today = new Date();
+                                    const birthDate = new Date(originalPartner.dob);
+                                    partnerAge = today.getFullYear() - birthDate.getFullYear();
+                                    const monthDiff = today.getMonth() - birthDate.getMonth();
+                                    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                                        partnerAge--;
+                                    }
+                                }
+
+                                io.to(`user_${newPartnerId}`).emit('partner_assigned', {
+                                    eventId: socket.eventId,
+                                    round: disconnectInfo.currentRound,
+                                    phase: disconnectInfo.currentPhase,
+                                    phaseDuration: matchmakingService.PHASE_DURATIONS[disconnectInfo.currentPhase],
+                                    phaseStartTime: new Date(),
+                                    partner: {
+                                        id: originalPartner._id.toString(),
+                                        userId: originalPartner._id.toString(),
+                                        name: originalPartner.name || 'Partner',
+                                        age: partnerAge,
+                                        bio: originalPartner.bio || '',
+                                        imageUrl: originalPartner.photos && originalPartner.photos.length > 0 ? originalPartner.photos[0] : null,
+                                    },
+                                    channelName: `event_${socket.eventId}_round_${disconnectInfo.currentRound}_${disconnectInfo.partnerId}_${newPartnerId}`,
+                                    isRematch: true,
+                                });
+                            }
+                        }
+                    } else {
+                        // No waiting user available - partner goes to waiting state
+                        const state = matchmakingService.getEventState(socket.eventId, disconnectInfo.partnerId);
+                        io.to(`user_${disconnectInfo.partnerId}`).emit('waiting_for_partner', {
+                            eventId: socket.eventId,
+                            round: disconnectInfo.currentRound,
+                            message: 'Waiting for next available partner...',
+                            timeUntilNextRound: state?.timeUntilNextRound,
+                        });
+                        console.log(`[Disconnect] Partner ${disconnectInfo.partnerId} moved to waiting state`);
+                    }
+                }
+            }
+
+            // Notify others in event session
+            socket.to(`event_session_${socket.eventId}`).emit('user_left_session', {
+                userId: socket.userId
+            });
+        }
+
+        // Handle regular online status
         if (socket.userId && onlineUsers.has(socket.userId)) {
             const userSockets = onlineUsers.get(socket.userId);
             userSockets.delete(socket.id);
@@ -599,11 +793,6 @@ io.on('connection', (socket) => {
             }
         }
 
-        if (socket.eventId) {
-            socket.to(`event_session_${socket.eventId}`).emit('user_left_session', {
-                userId: socket.userId
-            });
-        }
         console.log('User disconnected:', socket.id);
     });
 });
@@ -623,6 +812,417 @@ setInterval(async () => {
 }, 60000);
 
 console.log('📅 Event reminder scheduler started (checking every 60 seconds)');
+
+// ============================================
+// EVENT AUTO-START SCHEDULER
+// Monitors events and automatically starts them at scheduled time
+// ============================================
+
+const activeEventTimers = new Map();
+
+/**
+ * Auto-start an event when its scheduled time arrives
+ */
+async function autoStartEvent(eventId) {
+    console.log(`[EventScheduler] Auto-starting event ${eventId}`);
+
+    try {
+        // Check if all pairings are exhausted
+        if (matchmakingService.areAllPairingsExhausted(eventId)) {
+            io.to(`event_session_${eventId}`).emit('event_complete', {
+                eventId,
+                message: 'All possible pairings have been completed!',
+            });
+            return;
+        }
+
+        // Get max possible rounds before starting
+        const totalRounds = matchmakingService.getMaxPossibleRounds(eventId);
+
+        // Start round using matchmaking service
+        const roundInfo = matchmakingService.startRound(eventId);
+
+        if (!roundInfo || roundInfo.pairings.length === 0) {
+            io.to(`event_session_${eventId}`).emit('waiting_for_participants', {
+                eventId,
+                message: 'Waiting for more participants to join...',
+            });
+            return;
+        }
+
+        // Emit event_started to all participants in waiting room
+        io.to(`event_session_${eventId}`).emit('event_started', {
+            eventId,
+            round: roundInfo.round,
+            totalRounds: totalRounds,
+        });
+
+        console.log(`[EventScheduler] Event ${eventId} started! Round ${roundInfo.round} with ${roundInfo.pairings.length} pairs, ${totalRounds} total possible rounds`);
+
+        // Send partner assignments to each paired user
+        for (const pairing of roundInfo.pairings) {
+            try {
+                // Get partner details for user1
+                const partner2 = await User.findById(pairing.user2)
+                    .select('name dob gender bio photos')
+                    .lean();
+
+                if (partner2) {
+                    // Calculate age
+                    let age = null;
+                    if (partner2.dob) {
+                        const today = new Date();
+                        const birthDate = new Date(partner2.dob);
+                        age = today.getFullYear() - birthDate.getFullYear();
+                        const monthDiff = today.getMonth() - birthDate.getMonth();
+                        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                            age--;
+                        }
+                    }
+
+                    io.to(`user_${pairing.user1}`).emit('partner_assigned', {
+                        eventId,
+                        round: roundInfo.round,
+                        totalRounds: totalRounds,
+                        phase: roundInfo.phase,
+                        phaseDuration: roundInfo.phaseDuration,
+                        phaseStartTime: roundInfo.phaseStartTime,
+                        partner: {
+                            id: partner2._id.toString(),
+                            userId: partner2._id.toString(),
+                            name: partner2.name || 'Partner',
+                            age,
+                            bio: partner2.bio || '',
+                            imageUrl: partner2.photos && partner2.photos.length > 0 ? partner2.photos[0] : null,
+                        },
+                        channelName: `event_${eventId}_round_${roundInfo.round}_${pairing.user1}_${pairing.user2}`,
+                    });
+                }
+
+                // Get partner details for user2
+                const partner1 = await User.findById(pairing.user1)
+                    .select('name dob gender bio photos')
+                    .lean();
+
+                if (partner1) {
+                    let age = null;
+                    if (partner1.dob) {
+                        const today = new Date();
+                        const birthDate = new Date(partner1.dob);
+                        age = today.getFullYear() - birthDate.getFullYear();
+                        const monthDiff = today.getMonth() - birthDate.getMonth();
+                        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                            age--;
+                        }
+                    }
+
+                    io.to(`user_${pairing.user2}`).emit('partner_assigned', {
+                        eventId,
+                        round: roundInfo.round,
+                        totalRounds: totalRounds,
+                        phase: roundInfo.phase,
+                        phaseDuration: roundInfo.phaseDuration,
+                        phaseStartTime: roundInfo.phaseStartTime,
+                        partner: {
+                            id: partner1._id.toString(),
+                            userId: partner1._id.toString(),
+                            name: partner1.name || 'Partner',
+                            age,
+                            bio: partner1.bio || '',
+                            imageUrl: partner1.photos && partner1.photos.length > 0 ? partner1.photos[0] : null,
+                        },
+                        channelName: `event_${eventId}_round_${roundInfo.round}_${pairing.user1}_${pairing.user2}`,
+                    });
+                }
+            } catch (err) {
+                console.error('[EventScheduler] Error sending partner assignment:', err);
+            }
+        }
+
+        // Notify users without partners (odd count) that they're waiting
+        const participants = matchmakingService.getParticipants(eventId);
+        for (const p of participants) {
+            if (p.isOnline && !p.hasPartner) {
+                // Calculate time until next round
+                const totalPhaseDuration = matchmakingService.PHASE_DURATIONS.lobby +
+                    matchmakingService.PHASE_DURATIONS.date +
+                    matchmakingService.PHASE_DURATIONS.feedback;
+
+                io.to(`user_${p.userId}`).emit('waiting_for_partner', {
+                    eventId,
+                    round: roundInfo.round,
+                    message: 'Waiting for next available partner...',
+                    timeUntilNextRound: totalPhaseDuration,
+                });
+            }
+        }
+
+        // ============================================
+        // SERVER-CONTROLLED PHASE TIMER
+        // Server automatically advances phases to keep all clients in sync
+        // ============================================
+        schedulePhaseAdvancement(eventId, roundInfo.round);
+
+    } catch (error) {
+        console.error(`[EventScheduler] Error auto-starting event ${eventId}:`, error);
+    }
+}
+
+// Map to track active phase timers per event
+const activePhaseTimers = new Map();
+
+/**
+ * Schedule automatic phase advancement for server-controlled timing
+ */
+function schedulePhaseAdvancement(eventId, round) {
+    // Clear any existing timers for this event
+    if (activePhaseTimers.has(eventId)) {
+        const timers = activePhaseTimers.get(eventId);
+        timers.forEach(timer => clearTimeout(timer));
+    }
+
+    const timers = [];
+    const phaseDurations = matchmakingService.PHASE_DURATIONS;
+
+    // Schedule: lobby (60s) -> date (180s) -> feedback (60s) -> next round
+    let cumulativeDelay = 0;
+
+    // After lobby phase ends -> Start date phase
+    cumulativeDelay += phaseDurations.lobby * 1000;
+    timers.push(setTimeout(async () => {
+        await advanceToPhase(eventId, round, 'date');
+    }, cumulativeDelay));
+
+    // After date phase ends -> Start feedback phase
+    cumulativeDelay += phaseDurations.date * 1000;
+    timers.push(setTimeout(async () => {
+        await advanceToPhase(eventId, round, 'feedback');
+    }, cumulativeDelay));
+
+    // After feedback phase ends -> Start next round
+    cumulativeDelay += phaseDurations.feedback * 1000;
+    timers.push(setTimeout(async () => {
+        await startNextRound(eventId, round);
+    }, cumulativeDelay));
+
+    activePhaseTimers.set(eventId, timers);
+    console.log(`[PhaseTimer] Scheduled phase advancements for event ${eventId} round ${round}`);
+}
+
+/**
+ * Advance to a specific phase and notify all participants
+ */
+async function advanceToPhase(eventId, round, newPhase) {
+    console.log(`[PhaseTimer] Advancing event ${eventId} round ${round} to phase: ${newPhase}`);
+
+    const phaseInfo = matchmakingService.nextPhase(eventId);
+    if (!phaseInfo) {
+        console.log(`[PhaseTimer] Could not advance phase for event ${eventId}`);
+        return;
+    }
+
+    // If entering date phase, set date start time for all paired users
+    if (newPhase === 'date') {
+        const participants = matchmakingService.getParticipants(eventId);
+        for (const p of participants) {
+            if (p.hasPartner) {
+                matchmakingService.setDateStartTime(eventId, p.userId);
+            }
+        }
+    }
+
+    // Broadcast phase change to all participants
+    io.to(`event_session_${eventId}`).emit('phase_change', {
+        eventId,
+        round: phaseInfo.round,
+        phase: phaseInfo.phase,
+        phaseStartTime: phaseInfo.phaseStartTime,
+        phaseDuration: phaseInfo.phaseDuration,
+        remainingTime: phaseInfo.phaseDuration,
+    });
+
+    console.log(`[PhaseTimer] Broadcasted phase_change to event ${eventId}: ${phaseInfo.phase}`);
+}
+
+/**
+ * Start the next round after feedback phase ends
+ */
+async function startNextRound(eventId, previousRound) {
+    console.log(`[PhaseTimer] Starting next round for event ${eventId} (previous round: ${previousRound})`);
+
+    // End current round
+    matchmakingService.endRound(eventId);
+
+    // Check if all pairings are exhausted
+    if (matchmakingService.areAllPairingsExhausted(eventId)) {
+        io.to(`event_session_${eventId}`).emit('event_complete', {
+            eventId,
+            message: 'All possible pairings have been completed!',
+        });
+
+        // Clean up timers
+        if (activePhaseTimers.has(eventId)) {
+            activePhaseTimers.delete(eventId);
+        }
+        console.log(`[PhaseTimer] Event ${eventId} complete - all pairings exhausted`);
+        return;
+    }
+
+    // Start new round
+    const totalRounds = matchmakingService.getMaxPossibleRounds(eventId);
+    const roundInfo = matchmakingService.startRound(eventId);
+
+    if (!roundInfo || roundInfo.pairings.length === 0) {
+        io.to(`event_session_${eventId}`).emit('waiting_for_participants', {
+            eventId,
+            message: 'Waiting for more participants...',
+        });
+        return;
+    }
+
+    // Broadcast round start
+    io.to(`event_session_${eventId}`).emit('round_started', {
+        eventId,
+        round: roundInfo.round,
+        totalRounds,
+        phase: roundInfo.phase,
+        phaseDuration: roundInfo.phaseDuration,
+    });
+
+    // Send partner assignments
+    for (const pairing of roundInfo.pairings) {
+        try {
+            const partner2 = await User.findById(pairing.user2)
+                .select('name dob gender bio photos')
+                .lean();
+
+            if (partner2) {
+                let age = null;
+                if (partner2.dob) {
+                    const today = new Date();
+                    const birthDate = new Date(partner2.dob);
+                    age = today.getFullYear() - birthDate.getFullYear();
+                    const monthDiff = today.getMonth() - birthDate.getMonth();
+                    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                        age--;
+                    }
+                }
+
+                io.to(`user_${pairing.user1}`).emit('partner_assigned', {
+                    eventId,
+                    round: roundInfo.round,
+                    totalRounds,
+                    phase: roundInfo.phase,
+                    phaseDuration: roundInfo.phaseDuration,
+                    phaseStartTime: roundInfo.phaseStartTime,
+                    partner: {
+                        id: partner2._id.toString(),
+                        userId: partner2._id.toString(),
+                        name: partner2.name || 'Partner',
+                        age,
+                        bio: partner2.bio || '',
+                        imageUrl: partner2.photos && partner2.photos.length > 0 ? partner2.photos[0] : null,
+                    },
+                    channelName: `event_${eventId}_round_${roundInfo.round}_${pairing.user1}_${pairing.user2}`,
+                });
+            }
+
+            const partner1 = await User.findById(pairing.user1)
+                .select('name dob gender bio photos')
+                .lean();
+
+            if (partner1) {
+                let age = null;
+                if (partner1.dob) {
+                    const today = new Date();
+                    const birthDate = new Date(partner1.dob);
+                    age = today.getFullYear() - birthDate.getFullYear();
+                    const monthDiff = today.getMonth() - birthDate.getMonth();
+                    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                        age--;
+                    }
+                }
+
+                io.to(`user_${pairing.user2}`).emit('partner_assigned', {
+                    eventId,
+                    round: roundInfo.round,
+                    totalRounds,
+                    phase: roundInfo.phase,
+                    phaseDuration: roundInfo.phaseDuration,
+                    phaseStartTime: roundInfo.phaseStartTime,
+                    partner: {
+                        id: partner1._id.toString(),
+                        userId: partner1._id.toString(),
+                        name: partner1.name || 'Partner',
+                        age,
+                        bio: partner1.bio || '',
+                        imageUrl: partner1.photos && partner1.photos.length > 0 ? partner1.photos[0] : null,
+                    },
+                    channelName: `event_${eventId}_round_${roundInfo.round}_${pairing.user1}_${pairing.user2}`,
+                });
+            }
+        } catch (err) {
+            console.error('[PhaseTimer] Error sending partner assignment:', err);
+        }
+    }
+
+    // Notify waiting users
+    const participants = matchmakingService.getParticipants(eventId);
+    for (const p of participants) {
+        if (p.isOnline && !p.hasPartner) {
+            const totalPhaseDuration = matchmakingService.PHASE_DURATIONS.lobby +
+                matchmakingService.PHASE_DURATIONS.date +
+                matchmakingService.PHASE_DURATIONS.feedback;
+
+            io.to(`user_${p.userId}`).emit('waiting_for_partner', {
+                eventId,
+                round: roundInfo.round,
+                message: 'Waiting for next available partner...',
+                timeUntilNextRound: totalPhaseDuration,
+            });
+        }
+    }
+
+    // Schedule phase advancement for this round
+    schedulePhaseAdvancement(eventId, roundInfo.round);
+}
+
+// Check for upcoming events every 10 seconds
+setInterval(async () => {
+    try {
+        const now = new Date();
+        const oneMinuteFromNow = new Date(now.getTime() + 60000);
+
+        // Find events starting within the next minute that haven't been scheduled
+        const upcomingEvents = await Event.find({
+            date: { $gt: now, $lte: oneMinuteFromNow },
+            status: { $nin: ['Completed', 'Cancelled'] }
+        });
+
+        for (const event of upcomingEvents) {
+            const eventIdStr = event._id.toString();
+
+            if (!activeEventTimers.has(eventIdStr)) {
+                const startTime = new Date(event.date).getTime();
+                const delay = Math.max(0, startTime - now.getTime());
+
+                // Set timer to auto-start this event
+                const timer = setTimeout(async () => {
+                    await autoStartEvent(eventIdStr);
+                    activeEventTimers.delete(eventIdStr);
+                }, delay);
+
+                activeEventTimers.set(eventIdStr, timer);
+                console.log(`[EventScheduler] Scheduled auto-start for event ${eventIdStr} (${event.name}) in ${Math.round(delay / 1000)}s`);
+            }
+        }
+    } catch (error) {
+        console.error('[EventScheduler] Error checking upcoming events:', error);
+    }
+}, 10000); // Check every 10 seconds
+
+console.log('🚀 Event auto-start scheduler started (checking every 10 seconds)');
+
 
 // Routes
 app.use('/api/events', eventRoutes);

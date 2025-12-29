@@ -135,9 +135,12 @@ export default function RootLayout() {
     });
 
     const onLayoutRootView = useCallback(async () => {
+        console.log('🖼️ onLayoutRootView called', { fontsLoaded, fontError });
         if (fontsLoaded || fontError) {
             try {
+                console.log('🙈 Attempting to hide splash screen...');
                 await SplashScreen.hideAsync();
+                console.log('✅ Splash screen hidden');
             } catch (error) {
                 console.warn('⚠️ Failed to hide splash screen:', error);
             }
@@ -146,6 +149,14 @@ export default function RootLayout() {
 
     useEffect(() => {
         onLayoutRootView();
+
+        // Safety timeout to hide splash screen even if onLayoutRootView isn't called or fonts take too long
+        const timeoutId = setTimeout(() => {
+            console.log('⏰ Safety timeout: Hiding splash screen regardless of state');
+            SplashScreen.hideAsync().catch(err => console.warn('⚠️ Backup splash hide failed:', err));
+        }, 5000);
+
+        return () => clearTimeout(timeoutId);
     }, [onLayoutRootView]);
 
     if (!fontsLoaded && !fontError) {

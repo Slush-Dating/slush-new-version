@@ -347,6 +347,12 @@ class SocketService {
         }
     }
 
+    onEventStarted(callback: (data: { eventId: string; round?: number; totalRounds?: number }) => void): void {
+        if (this.socket) {
+            this.socket.on('event_started', callback);
+        }
+    }
+
     // Emit matchmaking events
     emitStartEventRound(eventId: string): void {
         if (this.socket) {

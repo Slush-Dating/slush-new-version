@@ -72,6 +72,12 @@ function joinSession(eventId, userId, socketId, userInfo) {
         isOnline: true,
         currentPartner: null,
         roundsCompleted: 0,
+        // New fields for robust event handling
+        lastWaitedRound: 0,           // For fair waiting rotation
+        consecutiveWaits: 0,          // Track consecutive waits for fairness
+        dateStartTime: null,          // When current date started (for minimum threshold)
+        lastDisconnectTime: null,     // Track when user disconnected
+        isLateJoiner: session.currentRound > 0, // Mark if they joined after event started
     });
 
     // Set event type from first user if not set
@@ -158,6 +164,7 @@ function canPair(user1, user2, eventType) {
 /**
  * Create optimal pairings for a round
  * Returns array of { user1, user2 } objects
+ * Implements fair waiting rotation to prevent same user from waiting repeatedly
  */
 function createPairings(eventId) {
     const session = eventSessions.get(eventId);
@@ -166,21 +173,37 @@ function createPairings(eventId) {
     const pairings = [];
     const availableUsers = [];
 
-    // Get all ready online users
+    // Get all ready online users (exclude late joiners until next round)
     for (const [userId, participant] of session.participants) {
         if (participant.isOnline && participant.isReady && !participant.currentPartner) {
+            // Late joiners skip their first round (joined mid-round)
+            if (participant.isLateJoiner) {
+                participant.isLateJoiner = false; // Clear flag for next round
+                console.log(`[Matchmaking] User ${userId} was late joiner - will be included in next round`);
+                continue;
+            }
             availableUsers.push({ ...participant, userId });
         }
     }
 
-    // Sort to ensure consistent pairing (men first for straight events)
-    if (session.eventType === 'straight') {
-        availableUsers.sort((a, b) => {
+    // FAIR WAITING ROTATION: Sort users to prioritize those who waited recently
+    // Users who waited in previous rounds should be paired first
+    availableUsers.sort((a, b) => {
+        // First priority: consecutiveWaits (higher = more urgent to pair)
+        if (a.consecutiveWaits !== b.consecutiveWaits) {
+            return b.consecutiveWaits - a.consecutiveWaits;
+        }
+        // Second priority: lastWaitedRound (closer to current = more urgent)
+        if (a.lastWaitedRound !== b.lastWaitedRound) {
+            return b.lastWaitedRound - a.lastWaitedRound;
+        }
+        // Third: for straight events, ensure gender mixing
+        if (session.eventType === 'straight') {
             if (a.gender === 'man' && b.gender !== 'man') return -1;
             if (a.gender !== 'man' && b.gender === 'man') return 1;
-            return 0;
-        });
-    }
+        }
+        return 0;
+    });
 
     // Greedy matching algorithm
     const paired = new Set();
@@ -212,8 +235,14 @@ function createPairings(eventId) {
             // Update participant state
             const p1 = session.participants.get(user1.userId);
             const p2 = session.participants.get(user2.userId);
-            if (p1) p1.currentPartner = user2.userId;
-            if (p2) p2.currentPartner = user1.userId;
+            if (p1) {
+                p1.currentPartner = user2.userId;
+                p1.consecutiveWaits = 0; // Reset consecutive waits since they're paired
+            }
+            if (p2) {
+                p2.currentPartner = user1.userId;
+                p2.consecutiveWaits = 0; // Reset consecutive waits since they're paired
+            }
 
             // Add to history
             session.pairingHistory.add(pairingKey);
@@ -226,14 +255,24 @@ function createPairings(eventId) {
     // Store pairings for this round
     session.currentPairings.set(session.currentRound, pairings);
 
-    // Log waiting users
+    // Update waiting users' history for fair rotation
     const waitingUsers = availableUsers.filter(u => !paired.has(u.userId));
+    for (const waiting of waitingUsers) {
+        const participant = session.participants.get(waiting.userId);
+        if (participant) {
+            participant.lastWaitedRound = session.currentRound;
+            participant.consecutiveWaits++;
+            console.log(`[Matchmaking] User ${waiting.userId} waiting (consecutiveWaits: ${participant.consecutiveWaits}, lastWaitedRound: ${session.currentRound})`);
+        }
+    }
+
     if (waitingUsers.length > 0) {
-        console.log(`[Matchmaking] ${waitingUsers.length} users waiting (odd participant): ${waitingUsers.map(u => u.userId).join(', ')}`);
+        console.log(`[Matchmaking] ${waitingUsers.length} users waiting this round: ${waitingUsers.map(u => u.userId).join(', ')}`);
     }
 
     return pairings;
 }
+
 
 /**
  * Start a new round
@@ -424,6 +463,245 @@ function getParticipants(eventId) {
     }));
 }
 
+/**
+ * Get maximum possible rounds for an event based on participant count and event type
+ * For straight events: min(males, females) - each person dates opposite gender
+ * For gay events: max count - 1 (each person dates same gender)
+ * For bisexual events: total - 1 (each person can date everyone else)
+ */
+function getMaxPossibleRounds(eventId) {
+    const session = eventSessions.get(eventId);
+    if (!session) return 0;
+
+    let males = 0, females = 0, others = 0;
+    for (const [, p] of session.participants) {
+        if (p.isOnline) {
+            if (p.gender === 'man') males++;
+            else if (p.gender === 'woman') females++;
+            else others++;
+        }
+    }
+
+    if (session.eventType === 'straight') {
+        // Each person can date everyone of opposite gender
+        return Math.min(males, females);
+    } else if (session.eventType === 'gay') {
+        // Each person dates same gender (n-1 possible dates per person)
+        const maxSameGender = Math.max(males, females);
+        return maxSameGender > 1 ? maxSameGender - 1 : 0;
+    }
+    // Bisexual: everyone can date everyone
+    const total = males + females + others;
+    return total > 1 ? total - 1 : 0;
+}
+// Minimum date duration (seconds) before counting as completed pairing
+const MIN_DATE_THRESHOLD = 30;
+
+/**
+ * Handle disconnect during event - notifies partner and manages re-matching
+ * Returns info about what happened for socket handler to emit
+ */
+function handleDisconnect(eventId, userId) {
+    const session = eventSessions.get(eventId);
+    if (!session) return null;
+
+    const participant = session.participants.get(userId);
+    if (!participant) return null;
+
+    const partnerId = participant.currentPartner;
+    const wasInDate = session.currentPhase === 'date';
+
+    // Mark disconnection time
+    participant.lastDisconnectTime = new Date();
+    participant.isOnline = false;
+    participant.isReady = false;
+
+    // If they had a partner during date phase
+    if (partnerId) {
+        const partner = session.participants.get(partnerId);
+        if (partner) {
+            partner.currentPartner = null;
+        }
+
+        // Check if date met minimum threshold
+        const dateMetThreshold = participant.dateStartTime &&
+            (new Date() - new Date(participant.dateStartTime)) >= MIN_DATE_THRESHOLD * 1000;
+
+        if (!dateMetThreshold && wasInDate) {
+            // Remove pairing from history since it didn't meet threshold
+            const pairingKey = createPairingKey(userId, partnerId);
+            session.pairingHistory.delete(pairingKey);
+            console.log(`[Matchmaking] Removed pairing ${pairingKey} from history (did not meet ${MIN_DATE_THRESHOLD}s threshold)`);
+        }
+
+        participant.currentPartner = null;
+
+        console.log(`[Matchmaking] User ${userId} disconnected during event ${eventId}. Partner: ${partnerId}, Phase: ${session.currentPhase}`);
+
+        return {
+            partnerId,
+            wasInDate,
+            dateMetThreshold,
+            currentPhase: session.currentPhase,
+            currentRound: session.currentRound,
+        };
+    }
+
+    return { partnerId: null, wasInDate: false };
+}
+
+/**
+ * Get authoritative event state for a user (for reconnection sync)
+ */
+function getEventState(eventId, userId) {
+    const session = eventSessions.get(eventId);
+    if (!session) return null;
+
+    const participant = session.participants.get(userId);
+
+    // Calculate remaining time in current phase
+    let remainingTime = 0;
+    if (session.phaseStartTime && PHASE_DURATIONS[session.currentPhase]) {
+        const elapsed = Math.floor((new Date() - new Date(session.phaseStartTime)) / 1000);
+        remainingTime = Math.max(0, PHASE_DURATIONS[session.currentPhase] - elapsed);
+    }
+
+    // Get partner info if user has one
+    let partnerId = null;
+    if (participant && participant.currentPartner) {
+        partnerId = participant.currentPartner;
+    }
+
+    // Check if user should be waiting (not paired)
+    const isWaiting = participant && !participant.currentPartner && session.currentPhase !== 'waiting';
+
+    // Calculate when next round starts if waiting
+    let timeUntilNextRound = null;
+    if (isWaiting && session.phaseStartTime) {
+        // Sum remaining time for all phases until round ends
+        const phases = ['lobby', 'date', 'feedback'];
+        const currentIdx = phases.indexOf(session.currentPhase);
+        if (currentIdx >= 0) {
+            timeUntilNextRound = remainingTime;
+            for (let i = currentIdx + 1; i < phases.length; i++) {
+                timeUntilNextRound += PHASE_DURATIONS[phases[i]];
+            }
+        }
+    }
+
+    return {
+        eventId,
+        currentRound: session.currentRound,
+        currentPhase: session.currentPhase,
+        phaseStartTime: session.phaseStartTime,
+        remainingTime,
+        partnerId,
+        isWaiting,
+        timeUntilNextRound,
+        totalRounds: getMaxPossibleRounds(eventId),
+    };
+}
+
+/**
+ * Set date start time when entering date phase (for minimum threshold tracking)
+ */
+function setDateStartTime(eventId, userId) {
+    const session = eventSessions.get(eventId);
+    if (!session) return;
+
+    const participant = session.participants.get(userId);
+    if (participant) {
+        participant.dateStartTime = new Date();
+    }
+}
+
+/**
+ * Check if a pairing should be recorded in history (met minimum duration)
+ */
+function shouldRecordPairing(eventId, userId) {
+    const session = eventSessions.get(eventId);
+    if (!session) return false;
+
+    const participant = session.participants.get(userId);
+    if (!participant || !participant.dateStartTime) return false;
+
+    const duration = (new Date() - new Date(participant.dateStartTime)) / 1000;
+    return duration >= MIN_DATE_THRESHOLD;
+}
+
+/**
+ * Get list of currently waiting participants (for potential re-matching)
+ */
+function getWaitingParticipants(eventId) {
+    const session = eventSessions.get(eventId);
+    if (!session) return [];
+
+    const waiting = [];
+    for (const [userId, participant] of session.participants) {
+        if (participant.isOnline && participant.isReady && !participant.currentPartner) {
+            waiting.push({ userId, ...participant });
+        }
+    }
+    return waiting;
+}
+
+/**
+ * Find a waiting participant to re-match with
+ * Used when partner disconnects mid-date
+ */
+function findWaitingPartner(eventId, userId, eventType) {
+    const session = eventSessions.get(eventId);
+    if (!session) return null;
+
+    const user = session.participants.get(userId);
+    if (!user) return null;
+
+    // Find first compatible waiting user
+    for (const [waitingId, participant] of session.participants) {
+        if (waitingId === userId) continue;
+        if (!participant.isOnline || !participant.isReady || participant.currentPartner) continue;
+
+        // Check compatibility
+        const tempUser = { ...user, currentPartner: null };
+        const tempWaiting = { ...participant, currentPartner: null };
+
+        if (canPair(tempUser, tempWaiting, eventType)) {
+            const pairingKey = createPairingKey(userId, waitingId);
+            if (!session.pairingHistory.has(pairingKey)) {
+                // Create the new pairing
+                user.currentPartner = waitingId;
+                participant.currentPartner = userId;
+                session.pairingHistory.add(pairingKey);
+
+                console.log(`[Matchmaking] Re-matched ${userId} with waiting user ${waitingId}`);
+                return waitingId;
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Mark user as rejoined (reconnected to session)
+ */
+function rejoinSession(eventId, userId, socketId) {
+    const session = eventSessions.get(eventId);
+    if (!session) return null;
+
+    const participant = session.participants.get(userId);
+    if (!participant) return null;
+
+    participant.socketId = socketId;
+    participant.isOnline = true;
+    participant.isReady = true;
+    participant.lastDisconnectTime = null;
+
+    console.log(`[Matchmaking] User ${userId} rejoined event ${eventId}`);
+
+    return getEventState(eventId, userId);
+}
+
 export default {
     getSession,
     joinSession,
@@ -438,5 +716,16 @@ export default {
     getSessionStats,
     cleanupSession,
     getParticipants,
+    getMaxPossibleRounds,
     PHASE_DURATIONS,
+    // New functions for robust event handling
+    handleDisconnect,
+    getEventState,
+    setDateStartTime,
+    shouldRecordPairing,
+    getWaitingParticipants,
+    findWaitingPartner,
+    rejoinSession,
+    MIN_DATE_THRESHOLD,
 };
+

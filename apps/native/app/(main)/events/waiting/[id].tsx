@@ -42,6 +42,7 @@ import * as Haptics from 'expo-haptics';
 import { eventService, type EventData } from '../../../../services/api';
 import { getAbsoluteMediaUrl } from '../../../../services/apiConfig';
 import { useBackNavigation } from '../../../../hooks/useBackNavigation';
+import socketService from '../../../../services/socketService';
 import { colors, spacing, radius, typography, shadows } from '../../../../constants/theme';
 const CIRCLE_SIZE = 200;
 const CIRCLE_STROKE_WIDTH = 8;
@@ -232,18 +233,36 @@ export default function WaitingRoomScreen() {
         },
     ];
 
-    // Auto-navigate when event starts
+    // Listen for server-triggered event start
+    useEffect(() => {
+        if (!id) return;
+
+        const handleEventStarted = (data: { eventId: string; round?: number; totalRounds?: number }) => {
+            if (data.eventId === id) {
+                console.log('[WaitingRoom] Server triggered event start!', data);
+                setIsEventStarting(true);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                // Navigate immediately - no delay
+                handleJoinSession();
+            }
+        };
+
+        // Join the event session room for socket events
+        socketService.emit('join_event_session', { eventId: id });
+
+        socketService.onEventStarted(handleEventStarted);
+
+        return () => {
+            socketService.off('event_started', handleEventStarted);
+        };
+    }, [id]);
+
+    // Also auto-navigate when local countdown reaches zero (fallback)
     useEffect(() => {
         if (isEventStarting && id) {
-            // Trigger haptic feedback
+            // Trigger haptic feedback and navigate immediately
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-            // Wait 1.5 seconds to show the "Join Event" button briefly, then auto-navigate
-            const autoJoinTimeout = setTimeout(() => {
-                handleJoinSession();
-            }, 1500);
-
-            return () => clearTimeout(autoJoinTimeout);
+            handleJoinSession();
         }
     }, [isEventStarting, id]);
 
@@ -438,22 +457,12 @@ export default function WaitingRoomScreen() {
                     </TouchableOpacity>
                 </View>
 
-                {/* Join Button (when event starts) */}
+                {/* Event Starting Indicator (auto-navigation happens immediately) */}
                 {isEventStarting && (
-                    <TouchableOpacity
-                        style={styles.joinButton}
-                        onPress={handleJoinSession}
-                        activeOpacity={0.8}
-                    >
-                        <LinearGradient
-                            colors={[colors.primary, colors.primaryLight]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.joinButtonGradient}
-                        >
-                            <Text style={styles.joinButtonText}>Join Event</Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
+                    <View style={styles.startingIndicator}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={styles.startingText}>Event is starting...</Text>
+                    </View>
                 )}
             </ScrollView>
 
@@ -817,20 +826,18 @@ const styles = StyleSheet.create({
         fontWeight: typography.weights.semibold,
         color: colors.primary,
     },
-    joinButton: {
-        borderRadius: radius.lg,
-        overflow: 'hidden',
-        marginTop: spacing.md,
-        ...shadows.md,
-    },
-    joinButtonGradient: {
-        paddingVertical: spacing.lg,
+    startingIndicator: {
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        gap: spacing.sm,
+        marginTop: spacing.lg,
+        paddingVertical: spacing.lg,
     },
-    joinButtonText: {
-        fontSize: typography.sizes.xl,
-        fontWeight: typography.weights.bold,
-        color: '#ffffff',
+    startingText: {
+        fontSize: typography.sizes.lg,
+        fontWeight: typography.weights.semibold,
+        color: colors.primary,
     },
     cameraModalContainer: {
         flex: 1,

@@ -56,20 +56,11 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
   // Extension point for config-plugins
 
   override func sourceURL(for bridge: RCTBridge) -> URL? {
-#if DEBUG
-    return bridge.bundleURL ?? bundleURL()
-#else
-    return bundleURL()
-#endif
+    // needed to return the correct URL for expo-dev-client.
+    bridge.bundleURL ?? bundleURL()
   }
 
   override func bundleURL() -> URL? {
-    // First, try to use the bundled JavaScript if it exists
-    if let bundleURL = Bundle.main.url(forResource: "main", withExtension: "jsbundle") {
-      return bundleURL
-    }
-    
-    // If no bundle exists, fall back to development server (DEBUG mode only)
 #if DEBUG
     return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry")
 #else

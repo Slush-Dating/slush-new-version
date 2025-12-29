@@ -54,8 +54,11 @@ export default function ChatListScreen() {
     const [searchQuery, setSearchQuery] = useState('');
     const socketCallbackRef = useRef<((message: any) => void) | null>(null);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (silent = false) => {
         try {
+            if (!silent) {
+                setIsLoading(true);
+            }
             console.log('📋 Chat list screen: Starting data fetch');
             const [chatList, matchesData] = await Promise.all([
                 chatService.getChatList(),
@@ -94,13 +97,13 @@ export default function ChatListScreen() {
     }, []);
 
     useEffect(() => {
-        fetchData();
+        fetchData(false); // Initial load
     }, [fetchData]);
 
     // Refresh chat list when screen comes into focus
     useFocusEffect(
         useCallback(() => {
-            fetchData();
+            fetchData(true); // Silent refresh on focus
         }, [fetchData])
     );
 
@@ -156,7 +159,7 @@ export default function ChatListScreen() {
 
     const handleRefresh = () => {
         setIsRefreshing(true);
-        fetchData();
+        fetchData(true); // Silent because we have RefreshControl
     };
 
     const handleChatPress = (chat: ChatItem | Match) => {

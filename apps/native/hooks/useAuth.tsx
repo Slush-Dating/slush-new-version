@@ -25,6 +25,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const isLoadingRef = React.useRef(true);
 
     // Load user on mount
     useEffect(() => {
@@ -32,8 +33,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const loadUser = async () => {
+        // Safety timeout to prevent infinite loading state
+        const timeoutId = setTimeout(() => {
+            if (isLoadingRef.current) {
+                console.warn('⏰ Auth loading timed out, proceeding with null user');
+                setIsLoading(false);
+            }
+        }, 8000); // 8 seconds timeout for auth loading
+
         try {
             setIsLoading(true);
+            isLoadingRef.current = true;
             console.log('🔄 Loading user from storage...');
 
             const [token, savedUser] = await Promise.all([
@@ -58,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('❌ Failed to load user:', error);
             setUser(null);
         } finally {
+            clearTimeout(timeoutId);
+            isLoadingRef.current = false;
             setIsLoading(false);
             console.log('✅ Auth loading complete');
         }

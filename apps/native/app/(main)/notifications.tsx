@@ -54,8 +54,11 @@ export default function NotificationsScreen() {
     const [activeFilter, setActiveFilter] = useState<FilterType>('all');
     const [error, setError] = useState<string | null>(null);
 
-    const fetchNotifications = useCallback(async () => {
+    const fetchNotifications = useCallback(async (silent = false) => {
         try {
+            if (!silent) {
+                setIsLoading(true);
+            }
             setError(null);
             // Map 'events' filter to 'event_reminder' for API
             const filterType = activeFilter === 'events' ? 'event_reminder' : activeFilter;
@@ -71,8 +74,7 @@ export default function NotificationsScreen() {
     }, [activeFilter]);
 
     useEffect(() => {
-        setIsLoading(true);
-        fetchNotifications();
+        fetchNotifications(false); // Initial load
     }, [fetchNotifications]);
 
     const handleRefresh = () => {

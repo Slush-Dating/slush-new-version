@@ -264,6 +264,224 @@ export default function EventSessionScreen() {
         };
     }, [id, user?.id]);
 
+    // Socket event handling for partner assignments (includes totalRounds from server)
+    useEffect(() => {
+        if (!id) return;
+
+        const handlePartnerAssigned = (data: {
+            eventId: string;
+            round: number;
+            totalRounds?: number;
+            phase: string;
+            phaseDuration: number;
+            phaseStartTime: string;
+            partner: {
+                id: string;
+                userId: string;
+                name: string;
+                age: number | null;
+                bio: string;
+                imageUrl: string | null;
+            };
+            channelName: string;
+        }) => {
+            if (data.eventId === id) {
+                console.log('[Session] Received partner_assigned from server:', data);
+
+                // Update partner
+                setPartner({
+                    id: data.partner.id,
+                    userId: data.partner.userId,
+                    name: data.partner.name,
+                    age: data.partner.age,
+                    bio: data.partner.bio || '',
+                    imageUrl: data.partner.imageUrl,
+                });
+
+                // Update round info from server
+                setRoundNumber(data.round);
+                if (data.totalRounds && data.totalRounds > 0) {
+                    setTotalRounds(data.totalRounds);
+                }
+
+                // Set phase based on server
+                setPhase(data.phase as SessionPhase);
+                setTimeLeft(data.phaseDuration);
+
+                // Trigger haptic feedback
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+        };
+
+        socketService.onPartnerAssigned(handlePartnerAssigned);
+
+        return () => {
+            socketService.off('partner_assigned', handlePartnerAssigned);
+        };
+    }, [id]);
+
+    // Handle partner disconnection during event
+    useEffect(() => {
+        if (!id) return;
+
+        const handlePartnerDisconnected = (data: {
+            eventId: string;
+            message: string;
+            wasInDate: boolean;
+            currentPhase: string;
+            currentRound: number;
+        }) => {
+            if (data.eventId === id) {
+                console.log('[Session] Partner disconnected:', data.message);
+
+                // Show alert to user
+                Alert.alert('Date Ended', data.message || 'Your partner has disconnected.');
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+                // Leave Agora channel if in a date
+                if (data.wasInDate) {
+                    leaveAgoraChannel();
+                }
+
+                // Clear partner and move to waiting
+                setPartner(null);
+                setPhase('waiting');
+            }
+        };
+
+        socketService.onPartnerDisconnected(handlePartnerDisconnected);
+
+        return () => {
+            socketService.off('partner_disconnected', handlePartnerDisconnected);
+        };
+    }, [id]);
+
+    // Handle server-controlled phase changes
+    useEffect(() => {
+        if (!id) return;
+
+        const handlePhaseChange = (data: {
+            eventId: string;
+            round: number;
+            phase: string;
+            phaseStartTime: string;
+            phaseDuration: number;
+            remainingTime: number;
+        }) => {
+            if (data.eventId === id) {
+                console.log('[Session] Server phase change:', data.phase, 'remaining:', data.remainingTime);
+
+                // Update phase and time from server
+                setPhase(data.phase as SessionPhase);
+                setTimeLeft(data.remainingTime);
+                setRoundNumber(data.round);
+
+                // Reset time notifications for new phase
+                setTimeNotifications({ '1min': false, '30sec': false });
+
+                // Join Agora channel when entering date phase
+                if (data.phase === 'date' && partner && id) {
+                    const channelName = `event_${id}_round_${data.round}_${partner.userId}`;
+                    joinAgoraChannel(channelName);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+
+                // Leave Agora channel when date ends
+                if (data.phase === 'feedback') {
+                    leaveAgoraChannel();
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                }
+            }
+        };
+
+        socketService.onPhaseChange(handlePhaseChange);
+
+        return () => {
+            socketService.off('phase_change', handlePhaseChange);
+        };
+    }, [id, partner]);
+
+    // Handle new round started
+    useEffect(() => {
+        if (!id) return;
+
+        const handleRoundStarted = (data: {
+            eventId: string;
+            round: number;
+            totalRounds: number;
+            phase: string;
+            phaseDuration: number;
+        }) => {
+            if (data.eventId === id) {
+                console.log('[Session] New round started:', data.round, 'of', data.totalRounds);
+
+                setRoundNumber(data.round);
+                setTotalRounds(data.totalRounds);
+                setPhase(data.phase as SessionPhase);
+                setTimeLeft(data.phaseDuration);
+
+                // Reset time notifications
+                setTimeNotifications({ '1min': false, '30sec': false });
+
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+        };
+
+        socketService.onRoundStarted(handleRoundStarted);
+
+        return () => {
+            socketService.off('round_started', handleRoundStarted);
+        };
+    }, [id]);
+
+    // Handle socket reconnection - sync state from server
+    useEffect(() => {
+        if (!id) return;
+
+        const handleConnectionChange = (status: 'connected' | 'disconnected') => {
+            if (status === 'connected') {
+                console.log('[Session] Socket reconnected - requesting state sync');
+
+                // Request authoritative state from server
+                socketService.requestEventState(id, (state: any) => {
+                    if (state.error) {
+                        console.error('[Session] Failed to get event state:', state.error);
+                        return;
+                    }
+
+                    console.log('[Session] Received event state:', state);
+
+                    // Sync local state with server
+                    setRoundNumber(state.currentRound);
+                    setPhase(state.currentPhase as SessionPhase);
+                    setTimeLeft(state.remainingTime);
+
+                    if (state.totalRounds) {
+                        setTotalRounds(state.totalRounds);
+                    }
+
+                    if (state.partner) {
+                        setPartner(state.partner);
+                    } else if (state.isWaiting) {
+                        setPartner(null);
+                        setPhase('waiting');
+                    }
+
+                    // Rejoin Agora if in date phase with partner
+                    if (state.currentPhase === 'date' && state.channelName) {
+                        joinAgoraChannel(state.channelName);
+                    }
+                });
+            }
+        };
+
+        socketService.onConnectionChange(handleConnectionChange);
+
+        return () => {
+            socketService.off('connection_change', handleConnectionChange);
+        };
+    }, [id]);
+
     // Cleanup Agora on unmount
     const cleanupAgora = async () => {
         try {
@@ -871,7 +1089,7 @@ export default function EventSessionScreen() {
                 <View style={styles.summaryContent}>
                     <Text style={styles.summaryTitle}>Speed Dating Complete! 🎉</Text>
                     <Text style={styles.summarySubtitle}>
-                        You met {totalRounds} amazing people
+                        You met {totalRounds > 0 ? totalRounds : roundNumber} amazing people
                     </Text>
 
                     {matches.length > 0 ? (
@@ -1006,7 +1224,7 @@ export default function EventSessionScreen() {
 
                     {/* Date Progress */}
                     <Text style={styles.dateProgress}>
-                        Date number {roundNumber} out of {totalRounds}
+                        Date number {roundNumber}{totalRounds > 0 ? ` of ${totalRounds}` : ''}
                     </Text>
 
                     {/* Quote */}
@@ -1051,7 +1269,7 @@ export default function EventSessionScreen() {
                     {/* Round Info */}
                     <View style={styles.waitingHeader}>
                         <Text style={styles.waitingRoundText}>
-                            {user?.id && absentUsers.has(user.id) ? 'Absent' : `Round ${roundNumber} of ${totalRounds}`}
+                            {user?.id && absentUsers.has(user.id) ? 'Absent' : `Round ${roundNumber}${totalRounds > 0 ? ` of ${totalRounds}` : ''}`}
                         </Text>
                         <Text style={styles.waitingSubtitle}>
                             {user?.id && absentUsers.has(user.id) ? 'You left the event but remain in the lobby' : 'Next date starting soon'}

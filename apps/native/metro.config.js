@@ -20,6 +20,17 @@ config.resolver.nodeModulesPaths = [
     path.resolve(workspaceRoot, 'node_modules'),
 ];
 
+// Add a resolver to mock react-native-agora for web
+// This prevents errors when bundling for web because react-native-agora
+// includes native-only modules that don't exist in the web environment.
+const isWeb = process.argv.includes('--platform') && process.argv[process.argv.indexOf('--platform') + 1] === 'web';
+if (isWeb) {
+    config.resolver.extraNodeModules = {
+        ...config.resolver.extraNodeModules,
+        'react-native-agora': path.resolve(workspaceRoot, 'node_modules/metro-runtime/src/modules/empty-module.js'),
+    };
+}
+
 // Ensure we're using the right project root
 config.projectRoot = projectRoot;
 

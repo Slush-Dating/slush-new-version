@@ -20,6 +20,30 @@ class SocketService {
     private userStatusHandlers: Set<(data: { userId: string; isOnline: boolean }) => void> = new Set();
     private userAbsentHandlers: Set<(data: { userId: string; eventId: string }) => void> = new Set();
     private notificationHandlers: Set<(data: { type: string; notification: any }) => void> = new Set();
+    private eventStartedHandlers: Set<(data: { eventId: string; round?: number; totalRounds?: number }) => void> = new Set();
+    // New handlers for robust event handling
+    private partnerDisconnectedHandlers: Set<(data: {
+        eventId: string;
+        message: string;
+        wasInDate: boolean;
+        currentPhase: string;
+        currentRound: number;
+    }) => void> = new Set();
+    private phaseChangeHandlers: Set<(data: {
+        eventId: string;
+        round: number;
+        phase: string;
+        phaseStartTime: string;
+        phaseDuration: number;
+        remainingTime: number;
+    }) => void> = new Set();
+    private roundStartedHandlers: Set<(data: {
+        eventId: string;
+        round: number;
+        totalRounds: number;
+        phase: string;
+        phaseDuration: number;
+    }) => void> = new Set();
 
     /**
      * Connect to the socket server
@@ -153,6 +177,49 @@ class SocketService {
                 type: 'event_reminder',
                 notification: data
             }));
+        });
+
+        // Listen for event_started events (server auto-starts events)
+        this.socket.on('event_started', (data: { eventId: string; round?: number; totalRounds?: number }) => {
+            console.log('🚀 Event started by server:', data.eventId);
+            this.eventStartedHandlers.forEach(handler => handler(data));
+        });
+
+        // Listen for partner disconnection during event (robust event handling)
+        this.socket.on('partner_disconnected', (data: {
+            eventId: string;
+            message: string;
+            wasInDate: boolean;
+            currentPhase: string;
+            currentRound: number;
+        }) => {
+            console.log('⚠️ Partner disconnected:', data.message);
+            this.partnerDisconnectedHandlers.forEach(handler => handler(data));
+        });
+
+        // Listen for server-controlled phase changes
+        this.socket.on('phase_change', (data: {
+            eventId: string;
+            round: number;
+            phase: string;
+            phaseStartTime: string;
+            phaseDuration: number;
+            remainingTime: number;
+        }) => {
+            console.log('⏭️ Phase changed by server:', data.phase, 'remaining:', data.remainingTime);
+            this.phaseChangeHandlers.forEach(handler => handler(data));
+        });
+
+        // Listen for new round started
+        this.socket.on('round_started', (data: {
+            eventId: string;
+            round: number;
+            totalRounds: number;
+            phase: string;
+            phaseDuration: number;
+        }) => {
+            console.log('🔄 New round started:', data.round, 'of', data.totalRounds);
+            this.roundStartedHandlers.forEach(handler => handler(data));
         });
     }
 
@@ -337,11 +404,68 @@ class SocketService {
     }
 
     /**
+     * Register a handler for event started events (server auto-start)
+     */
+    onEventStarted(handler: (data: { eventId: string; round?: number; totalRounds?: number }) => void): void {
+        this.eventStartedHandlers.add(handler);
+    }
+
+    /**
+     * Register a handler for partner disconnected events (robust event handling)
+     */
+    onPartnerDisconnected(handler: (data: {
+        eventId: string;
+        message: string;
+        wasInDate: boolean;
+        currentPhase: string;
+        currentRound: number;
+    }) => void): void {
+        this.partnerDisconnectedHandlers.add(handler);
+    }
+
+    /**
+     * Register a handler for server-controlled phase changes
+     */
+    onPhaseChange(handler: (data: {
+        eventId: string;
+        round: number;
+        phase: string;
+        phaseStartTime: string;
+        phaseDuration: number;
+        remainingTime: number;
+    }) => void): void {
+        this.phaseChangeHandlers.add(handler);
+    }
+
+    /**
+     * Register a handler for round started events
+     */
+    onRoundStarted(handler: (data: {
+        eventId: string;
+        round: number;
+        totalRounds: number;
+        phase: string;
+        phaseDuration: number;
+    }) => void): void {
+        this.roundStartedHandlers.add(handler);
+    }
+
+    /**
      * Request the online status of a specific user
      */
     getUserStatus(userId: string): void {
         if (this.socket?.connected) {
             this.socket.emit('get_user_status', userId);
+        }
+    }
+
+    /**
+     * Request authoritative event state from server (for reconnection sync)
+     */
+    requestEventState(eventId: string, callback: (data: any) => void): void {
+        if (this.socket?.connected) {
+            this.socket.emit('get_event_state', eventId, callback);
+            console.log('📡 Requesting event state for:', eventId);
         }
     }
 
@@ -363,6 +487,14 @@ class SocketService {
             this.userAbsentHandlers.delete(handler);
         } else if (event === 'new_notification' || event === 'notification') {
             this.notificationHandlers.delete(handler);
+        } else if (event === 'event_started') {
+            this.eventStartedHandlers.delete(handler);
+        } else if (event === 'partner_disconnected') {
+            this.partnerDisconnectedHandlers.delete(handler);
+        } else if (event === 'phase_change') {
+            this.phaseChangeHandlers.delete(handler);
+        } else if (event === 'round_started') {
+            this.roundStartedHandlers.delete(handler);
         } else if (this.socket) {
             this.socket.off(event, handler);
         }

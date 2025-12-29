@@ -433,7 +433,7 @@ io.on('connection', (socket) => {
                 ...state,
                 partner: partnerData,
                 channelName: state.partnerId
-                    ? `event_${eventId}_round_${state.currentRound}_${socket.userId}_${state.partnerId}`
+                    ? matchmakingService.getChannelName(eventId, state.currentRound, socket.userId, state.partnerId)
                     : null,
             };
 
@@ -528,7 +528,8 @@ io.on('connection', (socket) => {
                             bio: partner2.bio || '',
                             imageUrl: partner2.photos && partner2.photos.length > 0 ? partner2.photos[0] : null,
                         },
-                        channelName: `event_${eventId}_round_${roundInfo.round}_${pairing.user1}_${pairing.user2}`,
+                        channelName: matchmakingService.getChannelName(eventId, roundInfo.round, pairing.user1, pairing.user2),
+                        totalRounds: roundInfo.totalRounds,
                     });
                 }
 
@@ -563,7 +564,8 @@ io.on('connection', (socket) => {
                             bio: partner1.bio || '',
                             imageUrl: partner1.photos && partner1.photos.length > 0 ? partner1.photos[0] : null,
                         },
-                        channelName: `event_${eventId}_round_${roundInfo.round}_${pairing.user1}_${pairing.user2}`,
+                        channelName: matchmakingService.getChannelName(eventId, roundInfo.round, pairing.user2, pairing.user1),
+                        totalRounds: roundInfo.totalRounds,
                     });
                 }
             } catch (err) {
@@ -708,7 +710,7 @@ io.on('connection', (socket) => {
                                     bio: newPartner.bio || '',
                                     imageUrl: newPartner.photos && newPartner.photos.length > 0 ? newPartner.photos[0] : null,
                                 },
-                                channelName: `event_${socket.eventId}_round_${disconnectInfo.currentRound}_${disconnectInfo.partnerId}_${newPartnerId}`,
+                                channelName: matchmakingService.getChannelName(socket.eventId, disconnectInfo.currentRound, disconnectInfo.partnerId, newPartnerId),
                                 isRematch: true,
                             });
                             console.log(`[Disconnect] Re-matched ${disconnectInfo.partnerId} with waiting user ${newPartnerId}`);
@@ -744,7 +746,7 @@ io.on('connection', (socket) => {
                                         bio: originalPartner.bio || '',
                                         imageUrl: originalPartner.photos && originalPartner.photos.length > 0 ? originalPartner.photos[0] : null,
                                     },
-                                    channelName: `event_${socket.eventId}_round_${disconnectInfo.currentRound}_${disconnectInfo.partnerId}_${newPartnerId}`,
+                                    channelName: matchmakingService.getChannelName(socket.eventId, disconnectInfo.currentRound, disconnectInfo.partnerId, newPartnerId),
                                     isRematch: true,
                                 });
                             }

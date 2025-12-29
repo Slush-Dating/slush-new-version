@@ -48,9 +48,9 @@ import {
     Phone,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-// Conditional import for Agora - requires native modules (development build)
+import type { IRtcEngine, VideoCanvas as AgoraVideoCanvas } from 'react-native-agora';
+
 let createAgoraRtcEngine: any;
-let IRtcEngine: any;
 let ChannelProfileType: any;
 let ClientRoleType: any;
 let RtcSurfaceView: any;
@@ -60,7 +60,6 @@ let VideoSourceType: any;
 try {
     const agoraModule = require('react-native-agora');
     createAgoraRtcEngine = agoraModule.createAgoraRtcEngine;
-    IRtcEngine = agoraModule.IRtcEngine;
     ChannelProfileType = agoraModule.ChannelProfileType;
     ClientRoleType = agoraModule.ClientRoleType;
     RtcSurfaceView = agoraModule.RtcSurfaceView;
@@ -68,7 +67,6 @@ try {
     VideoSourceType = agoraModule.VideoSourceType;
 } catch (error) {
     console.warn('react-native-agora not available - requires development build:', error);
-    // Module will be undefined, we'll handle this in the component
 }
 
 import { eventService, matchService, agoraService } from '../../../../services/api';
@@ -127,6 +125,7 @@ export default function EventSessionScreen() {
     const [absentUsers, setAbsentUsers] = useState<Set<string>>(new Set());
     const [pairedPartnerIds, setPairedPartnerIds] = useState<string[]>([]);
     const [isUserAbsent, setIsUserAbsent] = useState(false);
+    const [serverChannelName, setServerChannelName] = useState<string | null>(null);
 
     // Match overlay state
     const [showMatchOverlay, setShowMatchOverlay] = useState(false);
@@ -143,8 +142,8 @@ export default function EventSessionScreen() {
     const currentChannelRef = useRef<string | null>(null);
     const currentUidRef = useRef<number | null>(null);
     const appIdRef = useRef<string | null>(null);
-    const localCanvasRef = useRef<VideoCanvas | null>(null);
-    const remoteCanvasRef = useRef<VideoCanvas | null>(null);
+    const localCanvasRef = useRef<AgoraVideoCanvas | null>(null);
+    const remoteCanvasRef = useRef<AgoraVideoCanvas | null>(null);
 
     // Animation values for feedback screen
     const profileScale = useSharedValue(0);
@@ -307,6 +306,7 @@ export default function EventSessionScreen() {
                 // Set phase based on server
                 setPhase(data.phase as SessionPhase);
                 setTimeLeft(data.phaseDuration);
+                setServerChannelName(data.channelName);
 
                 // Trigger haptic feedback
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -381,9 +381,16 @@ export default function EventSessionScreen() {
 
                 // Join Agora channel when entering date phase
                 if (data.phase === 'date' && partner && id) {
-                    const channelName = `event_${id}_round_${data.round}_${partner.userId}`;
-                    joinAgoraChannel(channelName);
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    const channelToJoin = serverChannelName;
+                    if (channelToJoin) {
+                        joinAgoraChannel(channelToJoin);
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    } else {
+                        console.warn('[Session] No channel name available to join Agora');
+                        // Fallback but warn
+                        const fallback_channelName = `event_${id}_round_${data.round}_${partner.userId}`;
+                        joinAgoraChannel(fallback_channelName);
+                    }
                 }
 
                 // Leave Agora channel when date ends
@@ -469,6 +476,7 @@ export default function EventSessionScreen() {
 
                     // Rejoin Agora if in date phase with partner
                     if (state.currentPhase === 'date' && state.channelName) {
+                        setServerChannelName(state.channelName);
                         joinAgoraChannel(state.channelName);
                     }
                 });
@@ -671,6 +679,9 @@ export default function EventSessionScreen() {
                 setPhase(currentPhase as SessionPhase);
                 setTimeLeft(timeRemaining);
                 setRoundNumber(serverRound);
+                if (result.channelName) {
+                    setServerChannelName(result.channelName);
+                }
 
                 // Reset time notifications for new phase
                 setTimeNotifications({ '1min': false, '30sec': false });
@@ -767,36 +778,9 @@ export default function EventSessionScreen() {
     };
 
     const handlePhaseEnd = async () => {
-        // Don't allow phase transitions for absent users
-        if (user?.id && absentUsers.has(user.id)) {
-            console.log('User is absent, staying in current phase');
-            return;
-        }
-
-        switch (phase) {
-            case 'lobby':
-                // Join Agora channel when starting the date
-                if (partner && id) {
-                    const channelName = `event_${id}_round_${roundNumber}_${partner.userId}`;
-                    await joinAgoraChannel(channelName);
-                }
-                setPhase('date');
-                setTimeLeft(TIMING.DATE);
-                // Reset time notifications for new date
-                setTimeNotifications({ '1min': false, '30sec': false });
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                break;
-            case 'date':
-                // Leave channel when date ends
-                await leaveAgoraChannel();
-                setPhase('feedback');
-                setTimeLeft(TIMING.FEEDBACK);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                break;
-            case 'feedback':
-                // Auto-pass if no decision made
-                moveToNextRound(false);
-                break;
+        // Request authoritative phase transition from server
+        if (id) {
+            socketService.emit('advance_phase', id);
         }
     };
 

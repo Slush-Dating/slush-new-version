@@ -309,7 +309,7 @@ export const eventService = {
             // Log each booking for debugging
             if (bookings.length > 0) {
                 console.log('📅 getUserBookings - Bookings details:');
-                bookings.forEach((booking, index) => {
+                bookings.forEach((booking: any, index: number) => {
                     console.log(`  Booking ${index}:`, {
                         _id: booking._id,
                         eventId: booking.eventId,
@@ -638,7 +638,7 @@ export const chatService = {
             }
 
             return response.json();
-        } catch (error) {
+        } catch (error: any) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
                 throw new Error('Request timeout - server may be busy');
@@ -780,7 +780,8 @@ export const agoraService = {
             phaseStartTime: string;
             timeRemaining: number;
             serverTime: string;
-        }
+        };
+        channelName?: string;
     }> {
         const API_BASE_URL = getApiBaseUrl();
         const headers = await getAuthHeaders();

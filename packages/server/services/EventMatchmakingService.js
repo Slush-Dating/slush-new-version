@@ -34,6 +34,7 @@ function getSession(eventId) {
             phaseStartTime: null,
             currentPairings: new Map(), // roundNumber -> [{user1, user2}, ...]
             eventType: 'straight',      // straight, gay, bisexual
+            totalRounds: 0,
         });
     }
     return eventSessions.get(eventId);
@@ -43,8 +44,16 @@ function getSession(eventId) {
  * Create a pairing key that is consistent regardless of order
  */
 function createPairingKey(userId1, userId2) {
-    const ids = [userId1, userId2].sort();
+    const ids = [userId1.toString(), userId2.toString()].sort();
     return `${ids[0]}-${ids[1]}`;
+}
+
+/**
+ * Get the standardized Agora channel name for a pairing
+ */
+function getChannelName(eventId, round, userId1, userId2) {
+    const ids = [userId1.toString(), userId2.toString()].sort();
+    return `event_${eventId}_round_${round}_${ids[0]}_${ids[1]}`;
 }
 
 /**
@@ -281,6 +290,19 @@ function startRound(eventId) {
     const session = eventSessions.get(eventId);
     if (!session) return null;
 
+    // Don't start a new round if we're already in one (unless it's the very first round)
+    if (session.currentRound > 0 && session.currentPhase !== 'feedback' && session.currentPhase !== 'summary') {
+        console.log(`[Matchmaking] Round start ignored - Event ${eventId} is already in ${session.currentPhase} phase of round ${session.currentRound}`);
+        return {
+            round: session.currentRound,
+            phase: session.currentPhase,
+            pairings: Array.from(session.currentPairings.get(session.currentRound) || []),
+            phaseStartTime: session.phaseStartTime,
+            phaseDuration: PHASE_DURATIONS[session.currentPhase],
+            totalRounds: session.totalRounds || getMaxPossibleRounds(eventId),
+        };
+    }
+
     // Clear current partners
     for (const [, participant] of session.participants) {
         participant.currentPartner = null;
@@ -301,6 +323,7 @@ function startRound(eventId) {
         pairings,
         phaseStartTime: session.phaseStartTime,
         phaseDuration: PHASE_DURATIONS[session.currentPhase],
+        totalRounds: session.totalRounds || getMaxPossibleRounds(eventId),
     };
 }
 
@@ -329,6 +352,7 @@ function nextPhase(eventId) {
         phase: session.currentPhase,
         phaseStartTime: session.phaseStartTime,
         phaseDuration: PHASE_DURATIONS[session.currentPhase],
+        totalRounds: session.totalRounds || getMaxPossibleRounds(eventId),
     };
 }
 
@@ -597,8 +621,8 @@ function getEventState(eventId, userId) {
         remainingTime,
         partnerId,
         isWaiting,
-        timeUntilNextRound,
-        totalRounds: getMaxPossibleRounds(eventId),
+        timeUntilNextRound: timeUntilNextRound > 0 ? timeUntilNextRound : 0,
+        totalRounds: session.totalRounds || getMaxPossibleRounds(eventId),
     };
 }
 
@@ -726,6 +750,7 @@ export default {
     getWaitingParticipants,
     findWaitingPartner,
     rejoinSession,
+    getChannelName,
     MIN_DATE_THRESHOLD,
 };
 

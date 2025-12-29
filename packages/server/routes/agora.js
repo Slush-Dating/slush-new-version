@@ -257,6 +257,7 @@ router.post('/event/:eventId/next-partner', authMiddleware, async (req, res) => 
                 bio: partner.bio || '',
                 imageUrl: partner.photos && partner.photos.length > 0 ? partner.photos[0] : null,
             },
+            channelName: matchmakingService.getChannelName(eventId, session.currentRound, userId, assignedPartnerId),
             timing: {
                 currentRound: session.currentRound,
                 currentPhase: session.currentPhase,

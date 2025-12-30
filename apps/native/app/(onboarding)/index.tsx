@@ -16,6 +16,7 @@ import {
     ActivityIndicator,
     Image,
     Alert,
+    Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,8 +35,9 @@ import {
     Calendar,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import * as Haptics from 'expo-haptics';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 
 import { useAuth } from '../../hooks/useAuth';
@@ -72,6 +74,35 @@ const INTERESTS_OPTIONS = [
     'Fitness', 'Photography', 'Reading', 'Coffee', 'Wine', 'Dancing',
     'Yoga', 'Pets', 'Nature', 'Tech', 'Fashion', 'Foodie'
 ];
+
+/**
+ * Helper component for video preview using expo-video
+ */
+function VideoPreview({ videoUrl, thumbnailUrl, style }: { videoUrl: string, thumbnailUrl?: string, style: any }) {
+    const player = useVideoPlayer(videoUrl, (player) => {
+        player.loop = true;
+        player.muted = true;
+        // Don't auto-play in the grid to save resources
+    });
+
+    return (
+        <View style={style}>
+            <VideoView
+                player={player}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+            />
+            {/* Fallback to thumbnail if video hasn't loaded or player fails */}
+            {thumbnailUrl && (
+                <Image
+                    source={{ uri: getAbsoluteMediaUrl(thumbnailUrl) }}
+                    style={[StyleSheet.absoluteFill, { opacity: 0.5 }]} // Subtle overlay
+                    resizeMode="cover"
+                />
+            )}
+        </View>
+    );
+}
 
 export default function OnboardingScreen() {
     const { completeOnboarding, logout } = useAuth();
@@ -269,6 +300,7 @@ export default function OnboardingScreen() {
     };
 
     const handleNext = async () => {
+        Keyboard.dismiss();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
         if (currentStep < STEPS.length - 1) {
@@ -316,6 +348,7 @@ export default function OnboardingScreen() {
     };
 
     const handleBack = () => {
+        Keyboard.dismiss();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         if (currentStep > 0) {
             setCurrentStep((prev) => prev - 1);
@@ -331,7 +364,7 @@ export default function OnboardingScreen() {
 
         // Fallback to extension-based detection
         const extension = uri.split('.').pop()?.toLowerCase() || uri.split('?')[0].split('.').pop()?.toLowerCase();
-        
+
         if (fileType === 'video') {
             switch (extension) {
                 case 'mov': return 'video/quicktime';
@@ -430,7 +463,7 @@ export default function OnboardingScreen() {
 
             // Create FormData with proper format for React Native
             const formData = new FormData();
-            
+
             // For React Native, FormData file object needs specific format
             // Use platform-specific URI handling
             const fileData: any = {
@@ -476,7 +509,7 @@ export default function OnboardingScreen() {
                         try {
                             const responseText = xhr.responseText || xhr.response;
                             const result = typeof responseText === 'string' ? JSON.parse(responseText) : responseText;
-                            
+
                             console.log('✅ Upload success:', {
                                 url: result.url,
                                 type: result.type,
@@ -484,9 +517,9 @@ export default function OnboardingScreen() {
                             });
 
                             if (fileType === 'video') {
-                                resolve({ 
-                                    url: result.url, 
-                                    thumbnailUrl: result.thumbnailUrl 
+                                resolve({
+                                    url: result.url,
+                                    thumbnailUrl: result.thumbnailUrl
                                 });
                             } else {
                                 resolve(result.url || result.originalUrl);
@@ -557,10 +590,10 @@ export default function OnboardingScreen() {
                 const uploadUrl = `${API_BASE_URL}/auth/upload`;
                 xhr.open('POST', uploadUrl);
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-                
+
                 // CRITICAL: Do NOT set Content-Type header manually
                 // Let XMLHttpRequest set it automatically with the correct boundary
-                
+
                 // Set timeout (5 minutes for videos, 2 minutes for images)
                 xhr.timeout = fileType === 'video' ? 300000 : 120000;
 
@@ -1112,17 +1145,11 @@ export default function OnboardingScreen() {
                                                 </View>
                                             ) : videos[index] ? (
                                                 <View style={styles.videoPreviewContainer}>
-                                                    {videos[index].thumbnailUrl ? (
-                                                        <Image
-                                                            source={{ uri: getAbsoluteMediaUrl(videos[index].thumbnailUrl || '') }}
-                                                            style={styles.media}
-                                                            resizeMode="cover"
-                                                        />
-                                                    ) : (
-                                                        <View style={styles.videoPlaceholder}>
-                                                            <VideoIcon size={32} color="#64748b" />
-                                                        </View>
-                                                    )}
+                                                    <VideoPreview
+                                                        videoUrl={getAbsoluteMediaUrl(videos[index].url)}
+                                                        thumbnailUrl={videos[index].thumbnailUrl}
+                                                        style={styles.media}
+                                                    />
                                                     <View style={styles.playIconOverlay}>
                                                         <Play size={24} color="#fff" fill="#fff" />
                                                     </View>
@@ -1207,11 +1234,11 @@ export default function OnboardingScreen() {
                             onPress={handleNext}
                             disabled={!canContinue() || isLoading}
                         >
-                            <LinearGradient
-                                colors={canContinue() ? ['#3B82F6', '#60A5FA'] : ['#374151', '#374151']}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={styles.buttonGradient}
+                            <View
+                                style={[
+                                    styles.buttonGradient,
+                                    { backgroundColor: canContinue() ? '#3B82F6' : '#374151' }
+                                ]}
                             >
                                 {isLoading ? (
                                     <ActivityIndicator color="#ffffff" />
@@ -1227,7 +1254,7 @@ export default function OnboardingScreen() {
                                         )}
                                     </>
                                 )}
-                            </LinearGradient>
+                            </View>
                         </TouchableOpacity>
                     </View>
                 </KeyboardAvoidingView>

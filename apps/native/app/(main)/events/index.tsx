@@ -508,9 +508,6 @@ export default function EventsScreen() {
         return 'London, UK';
     };
 
-    const getUserDisplayId = () => {
-        return user?._id?.slice(-8) || user?.id?.slice(-8) || '45485852';
-    };
 
     const getEventTypeLabel = (eventType?: string) => {
         switch (eventType) {
@@ -667,7 +664,7 @@ export default function EventsScreen() {
                                 {user?.name || 'Guest User'}
                             </Text>
                             <Text style={styles.profileLocation}>
-                                {getUserLocation()}, {getUserDisplayId()}
+                                {getUserLocation()}
                             </Text>
                         </View>
                     </View>

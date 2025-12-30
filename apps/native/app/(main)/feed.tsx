@@ -24,7 +24,7 @@ import {
     Snowflake,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import { discoveryService, matchService, type DiscoveryProfile } from '../../services/api';
 import VideoCard from '../../components/VideoCard';
@@ -45,6 +45,7 @@ export default function FeedScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [isActionLoading, setIsActionLoading] = useState(false);
+    const [isScreenFocused, setIsScreenFocused] = useState(true);
 
     // Match overlay state
     const [showMatchOverlay, setShowMatchOverlay] = useState(false);
@@ -94,6 +95,19 @@ export default function FeedScreen() {
     useEffect(() => {
         fetchFeed(false); // Initial load
     }, [fetchFeed]);
+
+    // Handle screen focus/blur to control video playback
+    useFocusEffect(
+        useCallback(() => {
+            setIsScreenFocused(true);
+            console.log('📱 Feed screen focused - videos can play');
+
+            return () => {
+                setIsScreenFocused(false);
+                console.log('📱 Feed screen unfocused - pausing all videos');
+            };
+        }, [])
+    );
 
     // Track which video is currently visible
     const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -193,7 +207,7 @@ export default function FeedScreen() {
                 {/* Video Component */}
                 <VideoCard
                     profile={item}
-                    isVisible={isVisible}
+                    isVisible={isVisible && isScreenFocused}
                     onVideoLoad={() => console.log('Video loaded for profile:', item.name)}
                     onVideoError={(error) => console.log('Video error for profile:', item.name, error)}
                 />
@@ -311,7 +325,7 @@ export default function FeedScreen() {
                 )}
             </View>
         );
-    }, [currentIndex, isActionLoading, likeScale, icebreakerScale, passScale, profiles.length, navigateToProfile]);
+    }, [currentIndex, isActionLoading, likeScale, icebreakerScale, passScale, profiles.length, navigateToProfile, isScreenFocused]);
 
     if (isLoading) {
         return (

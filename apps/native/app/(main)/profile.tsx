@@ -311,7 +311,18 @@ export default function ProfileScreen() {
 
                     {/* Gallery */}
                     <View style={styles.gallerySection}>
-                        <Text style={styles.sectionTitle}>Gallery</Text>
+                        <View style={styles.gallerySectionHeader}>
+                            <Text style={styles.sectionTitle}>Gallery</Text>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    router.push('/(main)/user/edit-gallery');
+                                }}
+                                style={styles.galleryEditButton}
+                            >
+                                <Edit3 size={18} color="#3B82F6" />
+                            </TouchableOpacity>
+                        </View>
                         <View style={styles.customGrid}>
                             <View style={styles.gridLarge}>
                                 <Image
@@ -619,6 +630,14 @@ const styles = StyleSheet.create({
     },
     gallerySection: {
         marginBottom: 32,
+    },
+    gallerySectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    galleryEditButton: {
+        padding: 8,
     },
     customGrid: {
         flexDirection: 'row',

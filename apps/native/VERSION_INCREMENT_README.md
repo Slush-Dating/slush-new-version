@@ -70,3 +70,4 @@ The script updates:
 - The scripts work on both macOS (using `plutil`) and Linux (using `sed`)
 - Always commit version changes before building
 
+

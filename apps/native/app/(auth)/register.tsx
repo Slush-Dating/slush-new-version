@@ -107,120 +107,120 @@ export default function RegisterScreen() {
                                 <Text style={styles.subtitle}>Create your account</Text>
                             </View>
 
-                        {/* Form */}
-                        <View style={styles.form}>
-                            {error ? (
-                                <View style={styles.errorContainer}>
-                                    <Text style={styles.errorText}>{error}</Text>
-                                </View>
-                            ) : null}
+                            {/* Form */}
+                            <View style={styles.form}>
+                                {error ? (
+                                    <View style={styles.errorContainer}>
+                                        <Text style={styles.errorText}>{error}</Text>
+                                    </View>
+                                ) : null}
 
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Email Address</Text>
-                                <View style={styles.inputContainer}>
-                                    <Mail size={20} color="#94A3B8" style={styles.inputIcon} />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="name@example.com"
-                                        placeholderTextColor="#64748B"
-                                        value={email}
-                                        onChangeText={setEmail}
-                                        keyboardType="email-address"
-                                        autoCapitalize="none"
-                                        autoComplete="email"
-                                        editable={!isLoading}
-                                    />
+                                <View style={styles.inputGroup}>
+                                    <Text style={styles.inputLabel}>Email Address</Text>
+                                    <View style={styles.inputContainer}>
+                                        <Mail size={20} color="#94A3B8" style={styles.inputIcon} />
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="name@example.com"
+                                            placeholderTextColor="#64748B"
+                                            value={email}
+                                            onChangeText={setEmail}
+                                            keyboardType="email-address"
+                                            autoCapitalize="none"
+                                            autoComplete="email"
+                                            editable={!isLoading}
+                                        />
+                                    </View>
                                 </View>
-                            </View>
 
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Password</Text>
-                                <View style={styles.inputContainer}>
-                                    <Lock size={20} color="#94A3B8" style={styles.inputIcon} />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="••••••••"
-                                        placeholderTextColor="#64748B"
-                                        value={password}
-                                        onChangeText={setPassword}
-                                        secureTextEntry={!showPassword}
-                                        autoCapitalize="none"
-                                        autoComplete="new-password"
-                                        editable={!isLoading}
-                                    />
-                                    <TouchableOpacity
-                                        onPress={() => setShowPassword(!showPassword)}
-                                        style={styles.eyeButton}
+                                <View style={styles.inputGroup}>
+                                    <Text style={styles.inputLabel}>Password</Text>
+                                    <View style={styles.inputContainer}>
+                                        <Lock size={20} color="#94A3B8" style={styles.inputIcon} />
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="••••••••"
+                                            placeholderTextColor="#64748B"
+                                            value={password}
+                                            onChangeText={setPassword}
+                                            secureTextEntry={!showPassword}
+                                            autoCapitalize="none"
+                                            autoComplete="new-password"
+                                            editable={!isLoading}
+                                        />
+                                        <TouchableOpacity
+                                            onPress={() => setShowPassword(!showPassword)}
+                                            style={styles.eyeButton}
+                                        >
+                                            {showPassword ? (
+                                                <EyeOff size={20} color="#94A3B8" />
+                                            ) : (
+                                                <Eye size={20} color="#94A3B8" />
+                                            )}
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                <View style={styles.inputGroup}>
+                                    <Text style={styles.inputLabel}>Confirm Password</Text>
+                                    <View style={styles.inputContainer}>
+                                        <Lock size={20} color="#94A3B8" style={styles.inputIcon} />
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="••••••••"
+                                            placeholderTextColor="#64748B"
+                                            value={confirmPassword}
+                                            onChangeText={setConfirmPassword}
+                                            secureTextEntry={!showPassword}
+                                            autoCapitalize="none"
+                                            autoComplete="new-password"
+                                            editable={!isLoading}
+                                        />
+                                    </View>
+                                </View>
+
+                                <TouchableOpacity
+                                    style={[styles.registerButton, isLoading && styles.buttonDisabled]}
+                                    onPress={handleRegister}
+                                    disabled={isLoading}
+                                    activeOpacity={0.85}
+                                >
+                                    <LinearGradient
+                                        colors={['#3B82F6', '#60A5FA']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                        style={styles.buttonGradient}
                                     >
-                                        {showPassword ? (
-                                            <EyeOff size={20} color="#94A3B8" />
+                                        {isLoading ? (
+                                            <ActivityIndicator color="#ffffff" />
                                         ) : (
-                                            <Eye size={20} color="#94A3B8" />
+                                            <Text style={styles.registerButtonText}>Create Account</Text>
                                         )}
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
+                                    </LinearGradient>
+                                </TouchableOpacity>
 
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Confirm Password</Text>
-                                <View style={styles.inputContainer}>
-                                    <Lock size={20} color="#94A3B8" style={styles.inputIcon} />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="••••••••"
-                                        placeholderTextColor="#64748B"
-                                        value={confirmPassword}
-                                        onChangeText={setConfirmPassword}
-                                        secureTextEntry={!showPassword}
-                                        autoCapitalize="none"
-                                        autoComplete="new-password"
-                                        editable={!isLoading}
-                                    />
-                                </View>
-                            </View>
-
-                            <TouchableOpacity
-                                style={[styles.registerButton, isLoading && styles.buttonDisabled]}
-                                onPress={handleRegister}
-                                disabled={isLoading}
-                                activeOpacity={0.85}
-                            >
-                                <LinearGradient
-                                    colors={['#3B82F6', '#60A5FA']}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.buttonGradient}
-                                >
-                                    {isLoading ? (
-                                        <ActivityIndicator color="#ffffff" />
-                                    ) : (
-                                        <Text style={styles.registerButtonText}>Create Account</Text>
-                                    )}
-                                </LinearGradient>
-                            </TouchableOpacity>
-
-                            <Text style={styles.termsText}>
-                                By signing up, you agree to our{' '}
-                                <Text style={styles.link}>Terms of Service</Text> and{' '}
-                                <Text style={styles.link}>Privacy Policy</Text>
-                            </Text>
-                        </View>
-
-                        {/* Footer */}
-                        <View style={styles.footer}>
-                            <Text style={styles.footerText}>
-                                Already have an account?{' '}
-                                <Text
-                                    style={styles.signInLink}
-                                    onPress={() => router.push('/(auth)/login')}
-                                >
-                                    Sign In
+                                <Text style={styles.termsText}>
+                                    By signing up, you agree to our{' '}
+                                    <Text style={styles.link}>Terms of Service</Text> and{' '}
+                                    <Text style={styles.link}>Privacy Policy</Text>
                                 </Text>
-                            </Text>
-                        </View>
-                    </ScrollView>
-                </KeyboardAvoidingView>
-            </SafeAreaView>
+                            </View>
+
+                            {/* Footer */}
+                            <View style={styles.footer}>
+                                <Text style={styles.footerText}>
+                                    Already have an account?{' '}
+                                    <Text
+                                        style={styles.signInLink}
+                                        onPress={() => router.push('/(auth)/login')}
+                                    >
+                                        Sign In
+                                    </Text>
+                                </Text>
+                            </View>
+                        </ScrollView>
+                    </KeyboardAvoidingView>
+                </SafeAreaView>
             </LinearGradient>
         </View>
     );
